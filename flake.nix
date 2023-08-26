@@ -72,17 +72,17 @@
     rec
     {
       packages = rec {
-        www-saffi = (rustPkgs.workspace.www-saffi { }).out;
-        www-saffi-dev = (rustPkgs.workspace.www-saffi-dev { }).bin;
-        www-saffi-wtf = (rustPkgs.workspace.www-saffi-wtf { }).bin;
+        saffi = (rustPkgs.workspace.www-saffi { }).out;
+        saffi-dev = (rustPkgs.workspace.www-saffi-dev { }).bin;
+        saffi-wtf = (rustPkgs.workspace.www-saffi-wtf { }).bin;
       };
 
       apps = rec {
-        www-saffi-dev = flake-utils.lib.mkApp {
-          drv = packages.www-saffi-dev;
+        saffi-dev = flake-utils.lib.mkApp {
+          drv = packages.saffi-dev;
         };
-        www-saffi-wtf = flake-utils.lib.mkApp {
-          drv = packages.www-saffi-wtf;
+        saffi-wtf = flake-utils.lib.mkApp {
+          drv = packages.saffi-wtf;
         };
       };
 

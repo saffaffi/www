@@ -59,14 +59,14 @@ else
       name = "www-saffi";
       version = "0.1.0";
       registry = "unknown";
-      src = fetchCrateLocal (workspaceSrc + "/www-saffi");
+      src = fetchCrateLocal (workspaceSrc + "/saffi");
     });
 
     "unknown".www-saffi-dev."0.1.0" = overridableMkRustCrate (profileName: rec {
       name = "www-saffi-dev";
       version = "0.1.0";
       registry = "unknown";
-      src = fetchCrateLocal (workspaceSrc + "/www-saffi-dev");
+      src = fetchCrateLocal (workspaceSrc + "/saffi-dev");
       dependencies = {
         www_saffi = (rustPackages."unknown".www-saffi."0.1.0" { inherit profileName; }).out;
       };
@@ -76,7 +76,7 @@ else
       name = "www-saffi-wtf";
       version = "0.1.0";
       registry = "unknown";
-      src = fetchCrateLocal (workspaceSrc + "/www-saffi-wtf");
+      src = fetchCrateLocal (workspaceSrc + "/saffi-wtf");
       dependencies = {
         www_saffi = (rustPackages."unknown".www-saffi."0.1.0" { inherit profileName; }).out;
       };

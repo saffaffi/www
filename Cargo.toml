@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "www-saffi",
-    "www-saffi-dev",
-    "www-saffi-wtf",
+    "saffi",
+    "saffi-dev",
+    "saffi-wtf",
 ]
