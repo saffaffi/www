@@ -4,3 +4,15 @@ members = [
     "saffi-dev",
     "saffi-wtf",
 ]
+
+[workspace.dependencies]
+www-saffi = { path = "saffi" }
+www-saffi-dev = { path = "saffi-dev" }
+www-saffi-wtf = { path = "saffi-wtf" }
+
+axum = "0.6.20"
+axum-tracing-opentelemetry = "0.13.1"
+init-tracing-opentelemetry = "0.13.1"
+tokio = "1.32.0"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.17"

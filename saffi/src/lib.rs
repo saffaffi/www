@@ -1,14 +1,17 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub fn init_tracing() {
+    #[cfg(debug_assertions)]
+    let fmt_layer = fmt::layer().with_timer(fmt::time::uptime()).pretty();
+    #[cfg(not(debug_assertions))]
+    let fmt_layer = fmt::layer();
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+    tracing_subscriber::registry()
+        .with(
+            EnvFilter::try_from_default_env()
+                .or_else(|_| EnvFilter::try_new("info"))
+                .unwrap(),
+        )
+        .with(fmt_layer)
+        .init();
 }

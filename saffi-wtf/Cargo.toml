@@ -6,4 +6,11 @@ publish = false
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-www-saffi = { path = "../saffi" }
+axum.workspace = true
+axum-tracing-opentelemetry.workspace = true
+tracing.workspace = true
+www-saffi.workspace = true
+
+[dependencies.tokio]
+workspace = true
+features = ["full"]
