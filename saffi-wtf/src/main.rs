@@ -5,6 +5,7 @@ use tokio::signal;
 use tracing::{info, warn};
 
 mod handlers;
+mod templates;
 
 #[tokio::main]
 async fn main() {
@@ -12,8 +13,12 @@ async fn main() {
 
     info!("starting server");
 
-    let app = Router::new()
-        .route("/", get(handlers::index))
+    let app = Router::new().route("/", get(handlers::index));
+
+    #[cfg(debug_assertions)]
+    let app = app.route("/break", get(handlers::internal_error));
+
+    let app = app
         .fallback(handlers::not_found)
         .layer(OtelAxumLayer::default());
 
