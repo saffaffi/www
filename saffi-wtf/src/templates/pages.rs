@@ -6,7 +6,7 @@ pub fn not_found() -> Markup {
     html! {
         (partials::head())
         body {
-            p {
+            p style="background: var(--error-background, #ffffff)" {
                 "wtf did you do?! that's not a route you can access."
             }
         }
