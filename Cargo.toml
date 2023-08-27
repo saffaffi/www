@@ -12,6 +12,7 @@ www-saffi-wtf = { path = "saffi-wtf" }
 
 axum = "0.6.20"
 axum-tracing-opentelemetry = "0.13.1"
+cfg-if = "1.0.0"
 init-tracing-opentelemetry = "0.13.1"
 tap = "1.0.1"
 thiserror = "1.0.47"
