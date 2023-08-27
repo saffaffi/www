@@ -1,6 +1,8 @@
-use axum::{body::Body, http::Request, routing::get, Router, Server};
+use axum::{routing::get, Router, Server};
 use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
-use tracing::{info, warn};
+use tracing::info;
+
+mod handler;
 
 #[tokio::main]
 async fn main() {
@@ -9,19 +11,8 @@ async fn main() {
     info!("starting server");
 
     let app = Router::new()
-        .route(
-            "/",
-            get(|| async {
-                info!(route = %"/", "handling request");
-                "Hello, wtf?!"
-            }),
-        )
-        .fallback(|request: Request<Body>| {
-            let uri = request.uri().clone();
-            async move {
-                warn!(route = %uri, "request received for unknown URI");
-            }
-        })
+        .route("/", get(handler::index))
+        .fallback(handler::not_found)
         .layer(OtelAxumLayer::default());
 
     Server::bind(&"0.0.0.0:4269".parse().unwrap())

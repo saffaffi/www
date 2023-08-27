@@ -26,7 +26,7 @@ args@{ release ? true
 ,
 }:
 let
-  nixifiedLockHash = "e6b16e5589e552bca198f16ace0b7cf9d5bed9ca3826c31316796ef5b416615d";
+  nixifiedLockHash = "dc1539b5807fd57f29aec946dc4417e463fcc00181360753abb6fd49d81e00dd";
   workspaceSrc = if args.workspaceSrc == null then ./. else args.workspaceSrc;
   currentLockHash = builtins.hashFile "sha256" (workspaceSrc + /Cargo.lock);
   lockHashIgnored =
@@ -1930,6 +1930,7 @@ else
       dependencies = {
         axum = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".axum."0.6.20" { inherit profileName; }).out;
         axum_tracing_opentelemetry = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".axum-tracing-opentelemetry."0.13.1" { inherit profileName; }).out;
+        thiserror = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".thiserror."1.0.47" { inherit profileName; }).out;
         tokio = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".tokio."1.32.0" { inherit profileName; }).out;
         tracing = (rustPackages."registry+https://github.com/rust-lang/crates.io-index".tracing."0.1.37" { inherit profileName; }).out;
         www_saffi = (rustPackages."unknown".www-saffi."0.1.0" { inherit profileName; }).out;

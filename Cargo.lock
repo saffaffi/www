@@ -1280,6 +1280,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-tracing-opentelemetry",
+ "thiserror",
  "tokio",
  "tracing",
  "www-saffi",

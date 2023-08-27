@@ -6,8 +6,9 @@ publish = false
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-axum.workspace = true
 axum-tracing-opentelemetry.workspace = true
+axum.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 www-saffi.workspace = true
 
