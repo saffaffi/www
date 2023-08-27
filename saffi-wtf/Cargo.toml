@@ -13,6 +13,10 @@ thiserror.workspace = true
 tracing.workspace = true
 www-saffi.workspace = true
 
+[dependencies.maud]
+workspace = true
+features = ["axum"]
+
 [dependencies.tokio]
 workspace = true
 features = ["full"]
