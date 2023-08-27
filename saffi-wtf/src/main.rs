@@ -4,6 +4,7 @@ use cfg_if::cfg_if;
 use tokio::signal;
 use tracing::{info, warn};
 
+mod errors;
 mod handlers;
 mod templates;
 
