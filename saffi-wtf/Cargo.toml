@@ -21,3 +21,8 @@ features = ["axum"]
 [dependencies.tokio]
 workspace = true
 features = ["full"]
+
+[build-dependencies]
+grass.workspace = true
+grass_compiler.workspace = true
+thiserror.workspace = true

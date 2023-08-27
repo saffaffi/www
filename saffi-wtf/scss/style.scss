@@ -1,0 +1,5 @@
+$error-background: #ffffff;
+
+main.error {
+  background: var(--error-background, $error-background);
+}

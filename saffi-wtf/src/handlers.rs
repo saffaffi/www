@@ -1,33 +1,56 @@
-use axum::{body::Body, extract::State, http::Request};
+use axum::{
+    body::Body,
+    extract::State,
+    http::{header, Request, Response},
+};
 use maud::{html, Markup};
 use tracing::info;
 
 use crate::{errors::HandlerError, templates::partials, AppState};
 
-pub async fn index(State(state): State<AppState>) -> Result<Markup, HandlerError> {
-    info!(route = %"/", "handling request");
+const STYLESHEET: &str = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
+
+pub async fn index(
+    State(state): State<AppState>,
+    request: Request<Body>,
+) -> Result<Markup, HandlerError> {
+    info!(route = %request.uri(), "handling request");
     Ok(html! {
         (partials::head(state).await)
         body {
-            "Hello, wtf?!"
+            main {
+                p {
+                    "Hello, wtf?!"
+                }
+            }
         }
     })
 }
 
-pub async fn make_green(State(state): State<AppState>) -> Result<(), HandlerError> {
+pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, HandlerError> {
+    info!(route = %request.uri(), "handling request");
+    Response::builder()
+        .header(header::CONTENT_TYPE, "text/css")
+        .body(STYLESHEET.to_owned())
+        .map_err(|_| HandlerError::InternalError)
+}
+
+pub async fn make_green(
+    State(state): State<AppState>,
+    request: Request<Body>,
+) -> Result<(), HandlerError> {
+    info!(route = %request.uri(), "making the error background green");
     state.colours.write().await.error_background = "#cafeba";
     Ok(())
 }
 
 pub async fn not_found(request: Request<Body>) -> HandlerError {
-    let uri = request.uri();
-    info!(route = %uri, "request received for unknown URI");
+    info!(route = %request.uri(), "request received for unknown URI");
     HandlerError::NotFound
 }
 
 #[cfg(debug_assertions)]
 pub async fn internal_error(request: Request<Body>) -> HandlerError {
-    let uri = request.uri();
-    info!(route = %uri, "internal error page explicitly requested");
+    info!(route = %request.uri(), "internal error page explicitly requested");
     HandlerError::InternalError
 }

@@ -31,6 +31,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(handlers::index))
+        .route("/style.css", get(handlers::stylesheet))
         .route("/api/make-green", post(handlers::make_green));
 
     #[cfg(debug_assertions)]
