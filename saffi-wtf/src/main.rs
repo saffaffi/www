@@ -4,7 +4,7 @@ use cfg_if::cfg_if;
 use tokio::signal;
 use tracing::{info, warn};
 
-mod handler;
+mod handlers;
 
 #[tokio::main]
 async fn main() {
@@ -13,8 +13,8 @@ async fn main() {
     info!("starting server");
 
     let app = Router::new()
-        .route("/", get(handler::index))
-        .fallback(handler::not_found)
+        .route("/", get(handlers::index))
+        .fallback(handlers::not_found)
         .layer(OtelAxumLayer::default());
 
     Server::bind(&"0.0.0.0:4269".parse().unwrap())
