@@ -1,12 +1,25 @@
-use axum::{routing::get, Router, Server};
+use std::sync::Arc;
+
+use axum::{
+    middleware,
+    routing::{get, post},
+    Router, Server,
+};
 use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
 use cfg_if::cfg_if;
-use tokio::signal;
+use tokio::{signal, sync::RwLock};
 use tracing::{info, warn};
+
+use crate::templates::components::DynamicColours;
 
 mod errors;
 mod handlers;
 mod templates;
+
+#[derive(Clone, Debug, Default)]
+pub struct AppState {
+    colours: Arc<RwLock<DynamicColours>>,
+}
 
 #[tokio::main]
 async fn main() {
@@ -14,14 +27,23 @@ async fn main() {
 
     info!("starting server");
 
-    let app = Router::new().route("/", get(handlers::index));
+    let state = AppState::default();
+
+    let app = Router::new()
+        .route("/", get(handlers::index))
+        .route("/api/make-green", post(handlers::make_green));
 
     #[cfg(debug_assertions)]
     let app = app.route("/break", get(handlers::internal_error));
 
     let app = app
         .fallback(handlers::not_found)
-        .layer(OtelAxumLayer::default());
+        .layer(OtelAxumLayer::default())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            errors::render_error,
+        ))
+        .with_state(state);
 
     Server::bind(&"0.0.0.0:4269".parse().unwrap())
         .serve(app.into_make_service())

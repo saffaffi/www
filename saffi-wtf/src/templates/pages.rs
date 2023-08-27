@@ -1,10 +1,11 @@
 use maud::{html, Markup};
 
 use super::partials;
+use crate::AppState;
 
-pub fn not_found() -> Markup {
+pub async fn not_found(state: AppState) -> Markup {
     html! {
-        (partials::head())
+        (partials::head(state).await)
         body {
             p style="background: var(--error-background, #ffffff)" {
                 "wtf did you do?! that's not a route you can access."
@@ -13,11 +14,11 @@ pub fn not_found() -> Markup {
     }
 }
 
-pub fn internal_error() -> Markup {
+pub async fn internal_error(state: AppState) -> Markup {
     html! {
-        (partials::head())
+        (partials::head(state).await)
         body {
-            p {
+            p style="background: var(--error-background, #ffffff)" {
                 "wtf, you broke it?! stop doing that."
             }
         }

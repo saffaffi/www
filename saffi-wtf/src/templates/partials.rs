@@ -1,15 +1,16 @@
 use maud::{html, Markup, DOCTYPE};
 
-use crate::templates::components::DynamicColours;
+use crate::AppState;
 
-pub fn head() -> Markup {
+pub async fn head(state: AppState) -> Markup {
+    let colours = state.colours.read().await;
     html! {
         (DOCTYPE)
         head {
             meta charset="utf-8";
             meta viewport="width=device-width, initial-scale=1";
             title { "saffi, wtf?!" }
-            (DynamicColours::default())
+            (*colours)
         }
     }
 }

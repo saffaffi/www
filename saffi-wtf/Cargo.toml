@@ -10,6 +10,7 @@ axum-tracing-opentelemetry.workspace = true
 axum.workspace = true
 cfg-if.workspace = true
 thiserror.workspace = true
+tower.workspace = true
 tracing.workspace = true
 www-saffi.workspace = true
 

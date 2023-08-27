@@ -1,17 +1,22 @@
-use axum::{body::Body, http::Request};
+use axum::{body::Body, extract::State, http::Request};
 use maud::{html, Markup};
 use tracing::info;
 
-use crate::{errors::HandlerError, templates::partials};
+use crate::{errors::HandlerError, templates::partials, AppState};
 
-pub async fn index() -> Result<Markup, HandlerError> {
+pub async fn index(State(state): State<AppState>) -> Result<Markup, HandlerError> {
     info!(route = %"/", "handling request");
     Ok(html! {
-        (partials::head())
+        (partials::head(state).await)
         body {
             "Hello, wtf?!"
         }
     })
+}
+
+pub async fn make_green(State(state): State<AppState>) -> Result<(), HandlerError> {
+    state.colours.write().await.error_background = "#cafeba";
+    Ok(())
 }
 
 pub async fn not_found(request: Request<Body>) -> HandlerError {

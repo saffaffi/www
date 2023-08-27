@@ -2,8 +2,9 @@ use std::fmt;
 
 use maud::{html, Markup, Render};
 
+#[derive(Clone, Debug)]
 pub struct DynamicColours {
-    error_background: &'static str,
+    pub error_background: &'static str,
 }
 
 impl Default for DynamicColours {
