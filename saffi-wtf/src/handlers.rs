@@ -3,10 +3,10 @@ use axum::{
     extract::State,
     http::{header, Request, Response},
 };
-use maud::{html, Markup};
+use maud::Markup;
 use tracing::info;
 
-use crate::{errors::HandlerError, templates::partials, AppState};
+use crate::{errors::HandlerError, templates::pages, AppState};
 
 const STYLESHEET: &str = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
 
@@ -15,16 +15,7 @@ pub async fn index(
     request: Request<Body>,
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
-    Ok(html! {
-        (partials::head(state).await)
-        body {
-            main {
-                p {
-                    "Hello, wtf?!"
-                }
-            }
-        }
-    })
+    Ok(pages::index(state).await)
 }
 
 pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, HandlerError> {

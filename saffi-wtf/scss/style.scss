@@ -1,5 +1,63 @@
+@import "reset";
+
+$accent: #d880e5;
 $error-background: #ffffff;
 
+body {
+  max-width: 42rem;
+  margin: 1rem auto;
+  padding: 0 1rem;
+  font-size: 100%;
+  line-height: 1.4;
+
+  font-family: 'Lora', serif;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+ul,
+ol,
+pre {
+  margin: 1rem 0;
+}
+
+a {
+  color: darken($accent, 35%);
+}
+
+h1.sitetitle {
+  font-size: 2.35rem;
+
+  a {
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.75rem; }
+h3 { font-size: 1.5rem; }
+h4 { font-size: 1.35rem; }
+h5 { font-size: 1.2rem; }
+h6 { font-size: 1.1rem; }
+
 main.error {
-  background: var(--error-background, $error-background);
+  // background: var(--error-background, $error-background);
 }
