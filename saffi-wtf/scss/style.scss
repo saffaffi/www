@@ -3,12 +3,31 @@
 $accent: #d880e5;
 $error-background: #ffffff;
 
+:root {
+  --text: #000;
+  --bg: #fff;
+
+  --text-accent: #{darken($accent, 35%)};
+}
+
+@media(prefers-color-scheme: dark) {
+  :root {
+    --text: #fff;
+    --bg: #000;
+
+    --text-accent: #{$accent};
+  }
+}
+
 body {
   max-width: 42rem;
   margin: 1rem auto;
   padding: 0 1rem;
   font-size: 100%;
   line-height: 1.4;
+
+  color: var(--text);
+  background-color: var(--bg);
 
   font-family: 'Lora', serif;
 }
@@ -27,7 +46,7 @@ pre {
 }
 
 a {
-  color: darken($accent, 35%);
+  color: var(--text-accent);
 }
 
 h1.sitetitle {
