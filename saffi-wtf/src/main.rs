@@ -1,24 +1,13 @@
-use std::sync::Arc;
-
-use axum::{
-    middleware,
-    routing::{get, post},
-    Router, Server,
-};
+use axum::{middleware, routing::get, Router, Server};
 use axum_tracing_opentelemetry::middleware::OtelAxumLayer;
-use tokio::sync::RwLock;
 use tracing::info;
-
-use crate::templates::components::DynamicColours;
 
 mod errors;
 mod handlers;
 mod templates;
 
 #[derive(Clone, Debug, Default)]
-pub struct AppState {
-    colours: Arc<RwLock<DynamicColours>>,
-}
+pub struct AppState {}
 
 #[tokio::main]
 async fn main() {
@@ -32,8 +21,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(handlers::index))
-        .route("/style.css", get(handlers::stylesheet))
-        .route("/api/make-green", post(handlers::make_green));
+        .route("/style.css", get(handlers::stylesheet));
 
     #[cfg(debug_assertions)]
     let app = app.route("/break", get(handlers::internal_error));

@@ -2,8 +2,7 @@ use maud::{html, Markup, DOCTYPE};
 
 use crate::AppState;
 
-pub async fn head(state: AppState) -> Markup {
-    let colours = state.colours.read().await;
+pub async fn head(_state: AppState) -> Markup {
     html! {
         (DOCTYPE)
         head {
@@ -12,7 +11,6 @@ pub async fn head(state: AppState) -> Markup {
             link rel="stylesheet" href="/style.css" type="text/css";
             link href="https://fonts.googleapis.com/css2?family=Lora" rel="stylesheet";
             title { "saffi, wtf?!" }
-            (*colours)
         }
     }
 }

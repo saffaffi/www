@@ -1,11 +1,11 @@
 @import "reset";
 
 $accent: #d880e5;
-$error-background: #ffffff;
 
 :root {
   --text: #000;
   --bg: #fff;
+  --error-background: #fff;
 
   --text-accent: #{darken($accent, 35%)};
 }
@@ -14,6 +14,7 @@ $error-background: #ffffff;
   :root {
     --text: #fff;
     --bg: #000;
+    --error-background: #000;
 
     --text-accent: #{$accent};
   }
@@ -78,5 +79,5 @@ h5 { font-size: 1.2rem; }
 h6 { font-size: 1.1rem; }
 
 main.error {
-  // background: var(--error-background, $error-background);
+  background: var(--error-background);
 }

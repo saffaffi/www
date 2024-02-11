@@ -26,15 +26,6 @@ pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, Hand
         .map_err(|_| HandlerError::InternalError)
 }
 
-pub async fn make_green(
-    State(state): State<AppState>,
-    request: Request<Body>,
-) -> Result<(), HandlerError> {
-    info!(route = %request.uri(), "making the error background green");
-    state.colours.write().await.error_background = "#cafeba";
-    Ok(())
-}
-
 pub async fn not_found(request: Request<Body>) -> HandlerError {
     info!(route = %request.uri(), "request received for unknown URI");
     HandlerError::NotFound
