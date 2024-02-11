@@ -24,7 +24,9 @@ pub struct AppState {
 async fn main() {
     www_saffi::init_tracing();
 
-    info!("starting server");
+    let addr = "0.0.0.0:4269".parse().unwrap();
+
+    info!(%addr, "starting server");
 
     let state = AppState::default();
 
@@ -45,7 +47,7 @@ async fn main() {
         ))
         .with_state(state);
 
-    Server::bind(&"0.0.0.0:4269".parse().unwrap())
+    Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(www_saffi::graceful_shutdown())
         .await
