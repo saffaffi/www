@@ -1535,7 +1535,9 @@ checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
 name = "www-saffi"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "init-tracing-opentelemetry",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
