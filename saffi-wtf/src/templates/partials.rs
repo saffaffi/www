@@ -6,8 +6,8 @@ use syntect::{
 
 use crate::AppState;
 
-pub async fn head(_state: AppState) -> Markup {
-    let theme_set = ThemeSet::load_from_folder("onehalf/sublimetext").unwrap();
+pub async fn head(state: AppState) -> Markup {
+    let theme_set = ThemeSet::load_from_folder(state.themes_path).unwrap();
 
     let light_css = css_for_theme_with_class_style(
         theme_set.themes.get("OneHalfLight").unwrap(),

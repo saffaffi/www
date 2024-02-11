@@ -8,13 +8,19 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 axum-tracing-opentelemetry.workspace = true
 axum.workspace = true
+camino.workspace = true
 cfg-if.workspace = true
 comrak.workspace = true
+dotenv.workspace = true
 syntect.workspace = true
 thiserror.workspace = true
 tower.workspace = true
 tracing.workspace = true
 www-saffi.workspace = true
+
+[dependencies.clap]
+workspace = true
+features = ["env"]
 
 [dependencies.maud]
 workspace = true

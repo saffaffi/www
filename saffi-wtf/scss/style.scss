@@ -30,31 +30,33 @@ $accent: #d880e5;
   }
 }
 
-/* lora-regular - latin_latin-ext_math_symbols */
+// lora-regular - latin_latin-ext_math_symbols
 @font-face {
-  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+  // Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display
+  // for other options.
+  font-display: swap;
   font-family: 'Lora';
   font-style: normal;
   font-weight: 400;
-  src: url('/static/lora-v35-latin_latin-ext_math_symbols-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  src: url('/static/lora-regular.woff2') format('woff2');
 }
 
-/* lora-italic - latin_latin-ext_math_symbols */
+// lora-italic - latin_latin-ext_math_symbols
 @font-face {
-  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+  font-display: swap;
   font-family: 'Lora';
   font-style: italic;
   font-weight: 400;
-  src: url('/static/lora-v35-latin_latin-ext_math_symbols-italic.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  src: url('/static/lora-italic.woff2') format('woff2');
 }
 
-/* lora-600 - latin_latin-ext_math_symbols */
+// lora-600 - latin_latin-ext_math_symbols
 @font-face {
-  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+  font-display: swap;
   font-family: 'Lora';
   font-style: normal;
   font-weight: 600;
-  src: url('/static/lora-v35-latin_latin-ext_math_symbols-600.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  src: url('/static/lora-600.woff2') format('woff2');
 }
 
 body {

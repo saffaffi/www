@@ -13,8 +13,11 @@ www-saffi-wtf = { path = "saffi-wtf" }
 
 axum = "0.7.4"
 axum-tracing-opentelemetry = "0.16.0"
+camino = "1.1.6"
 cfg-if = "1.0.0"
+clap = "4.5.0"
 comrak = "0.21.0"
+dotenv = "0.15.0"
 grass = "0.13.2"
 grass_compiler = "0.13.2"
 init-tracing-opentelemetry = "0.16.0"

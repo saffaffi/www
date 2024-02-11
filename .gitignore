@@ -7,3 +7,5 @@ target/
 # Nix
 /result
 /result-bin
+
+**/.env

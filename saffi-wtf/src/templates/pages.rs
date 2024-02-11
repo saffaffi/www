@@ -8,7 +8,9 @@ use maud::{html, Markup, PreEscaped};
 use crate::{templates::wrappers, AppState};
 
 pub async fn index(state: AppState) -> Markup {
-    let raw_content = fs::read_to_string("saffi-wtf/content/_index.md").unwrap();
+    let mut index_path = state.content_path.clone();
+    index_path.push("_index.md");
+    let raw_content = fs::read_to_string(index_path).unwrap();
 
     let syntect_adapter = SyntectAdapter::new(None);
 
