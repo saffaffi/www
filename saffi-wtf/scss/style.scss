@@ -8,6 +8,11 @@ $accent: #d880e5;
   --error-background: #fff;
 
   --text-accent: #{darken($accent, 35%)};
+
+  pre {
+    color: #383a42;
+    background-color: #fafafa;
+  }
 }
 
 @media(prefers-color-scheme: dark) {
@@ -17,7 +22,39 @@ $accent: #d880e5;
     --error-background: #000;
 
     --text-accent: #{$accent};
+
+    pre {
+      color: #dcdfe4;
+      background-color: #282c34;
+    }
   }
+}
+
+/* lora-regular - latin_latin-ext_math_symbols */
+@font-face {
+  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/static/lora-v35-latin_latin-ext_math_symbols-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+/* lora-italic - latin_latin-ext_math_symbols */
+@font-face {
+  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  src: url('/static/lora-v35-latin_latin-ext_math_symbols-italic.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+/* lora-600 - latin_latin-ext_math_symbols */
+@font-face {
+  font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 600;
+  src: url('/static/lora-v35-latin_latin-ext_math_symbols-600.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
 }
 
 body {
@@ -80,4 +117,14 @@ h6 { font-size: 1.1rem; }
 
 main.error {
   background: var(--error-background);
+}
+
+code,
+pre {
+  font-family: monospace;
+}
+
+pre {
+  padding: 0.5rem;
+  overflow-x: scroll;
 }

@@ -33,7 +33,7 @@
 
                 stableFor = target: target.fromToolchainFile {
                   file = ./rust-toolchain.toml;
-                  sha256 = "sha256-R0F0Risbr74xg9mEYydyebx/z0Wu6HI0/KWwrV30vZo=";
+                  sha256 = "sha256-e4mlaJehWBymYxJGgnbuCObVlqMlQSilZ8FljG9zPHY=";
                 };
 
                 rustfmt = final.fenix.latest.rustfmt;

@@ -4,7 +4,7 @@ use axum::{
     http::{header, Request, Response},
 };
 use maud::Markup;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{errors::HandlerError, templates::pages, AppState};
 
@@ -27,12 +27,12 @@ pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, Hand
 }
 
 pub async fn not_found(request: Request<Body>) -> HandlerError {
-    info!(route = %request.uri(), "request received for unknown URI");
+    warn!(route = %request.uri(), "request received for unknown URI");
     HandlerError::NotFound
 }
 
 #[cfg(debug_assertions)]
 pub async fn internal_error(request: Request<Body>) -> HandlerError {
-    info!(route = %request.uri(), "internal error page explicitly requested");
+    warn!(route = %request.uri(), "internal error page explicitly requested");
     HandlerError::InternalError
 }

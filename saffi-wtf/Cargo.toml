@@ -9,6 +9,8 @@ license = "MIT OR Apache-2.0"
 axum-tracing-opentelemetry.workspace = true
 axum.workspace = true
 cfg-if.workspace = true
+comrak.workspace = true
+syntect.workspace = true
 thiserror.workspace = true
 tower.workspace = true
 tracing.workspace = true
@@ -21,6 +23,10 @@ features = ["axum"]
 [dependencies.tokio]
 workspace = true
 features = ["full"]
+
+[dependencies.tower-http]
+workspace = true
+features = ["fs"]
 
 [build-dependencies]
 grass.workspace = true

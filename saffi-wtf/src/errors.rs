@@ -1,4 +1,5 @@
 use axum::{
+    body::Body,
     extract::State,
     http::{Request, StatusCode},
     middleware::Next,
@@ -9,7 +10,7 @@ use thiserror::Error;
 use crate::{templates::pages, AppState};
 
 /// Errors that can be returned by request handlers.
-#[derive(Error, Debug)]
+#[derive(Error, Clone, Debug)]
 pub enum HandlerError {
     /// The requested page was not found.
     #[error("page not found")]
@@ -40,10 +41,10 @@ impl IntoResponse for HandlerError {
 /// from the extensions of the response.
 ///
 /// This is done so that state can be accessed when rendering errors.
-pub async fn render_error<B>(
+pub async fn render_error(
     State(state): State<AppState>,
-    request: Request<B>,
-    next: Next<B>,
+    request: Request<Body>,
+    next: Next,
 ) -> Response {
     let mut response = next.run(request).await;
 
