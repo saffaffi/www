@@ -10,7 +10,9 @@ pub async fn index(content: Content, theme: Theme) -> Markup {
     wrappers::base(
         theme,
         html! {
-            (PreEscaped(&page.html_content))
+            main class="page" {
+                (PreEscaped(&page.html_content))
+            }
         },
     )
     .await
