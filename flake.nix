@@ -11,12 +11,16 @@
     cargo2nix.url = "github:cargo2nix/cargo2nix/unstable";
     cargo2nix.inputs.flake-utils.follows = "flake-utils";
     cargo2nix.inputs.nixpkgs.follows = "nixpkgs";
+
+    onehalf.url = "github:sonph/onehalf/master";
+    onehalf.flake = false;
   };
 
   outputs =
     { self
     , nixpkgs
     , flake-utils
+    , onehalf
     , ...
     } @ inputs:
     let
@@ -115,6 +119,8 @@
 
           libiconv
         ];
+
+        THEMES_PATH = "${onehalf}/sublimetext";
       };
 
       formatter = pkgs.nixpkgs-fmt;

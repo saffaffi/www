@@ -97,12 +97,30 @@
         "type": "github"
       }
     },
+    "onehalf": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1659479187,
+        "narHash": "sha256-F5gbDtGD2QBDGZOjr/OCJJlyQgxvQTsy8IoNNAjnDzQ=",
+        "owner": "sonph",
+        "repo": "onehalf",
+        "rev": "75eb2e97acd74660779fed8380989ee7891eec56",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sonph",
+        "ref": "master",
+        "repo": "onehalf",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "cargo2nix": "cargo2nix",
         "fenix": "fenix",
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "onehalf": "onehalf"
       }
     },
     "rust-analyzer-src": {
