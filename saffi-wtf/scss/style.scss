@@ -2,30 +2,32 @@
 
 $accent: #d880e5;
 
-:root {
-  --text: #000;
-  --bg: #fff;
-  --error-background: #fff;
+$onehalf-light-text: #383a42;
+$onehalf-light-bg: #fafafa;
 
+$onehalf-dark-text: #dcdfe4;
+$onehalf-dark-bg: #282c34;
+
+:root {
+  --text: #{darken($onehalf-light-text, 10%)};
+  --bg: #{lighten($onehalf-light-bg, 5%)};
   --text-accent: #{darken($accent, 35%)};
 
   pre {
-    color: #383a42;
-    background-color: #fafafa;
+    color: $onehalf-light-text;
+    background-color: $onehalf-light-bg;
   }
 }
 
 @media(prefers-color-scheme: dark) {
   :root {
-    --text: #fff;
-    --bg: #000;
-    --error-background: #000;
-
+    --text: #{lighten($onehalf-dark-text, 10%)};
+    --bg: #{darken($onehalf-dark-bg, 5%)};
     --text-accent: #{$accent};
 
     pre {
-      color: #dcdfe4;
-      background-color: #282c34;
+      color: $onehalf-dark-text;
+      background-color: $onehalf-dark-bg;
     }
   }
 }
@@ -116,10 +118,6 @@ h3 { font-size: 1.5rem; }
 h4 { font-size: 1.35rem; }
 h5 { font-size: 1.2rem; }
 h6 { font-size: 1.1rem; }
-
-main.error {
-  background: var(--error-background);
-}
 
 code,
 pre {
