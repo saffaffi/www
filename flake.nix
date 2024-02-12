@@ -27,6 +27,8 @@
           inputs.fenix.overlays.default
 
           (final: prev: {
+            cargo2nix = inputs.cargo2nix.packages.${system}.default;
+
             rust-toolchain =
               let
                 inherit (final.lib.strings) fileContents;
@@ -42,10 +44,6 @@
                 rustfmt
                 (stableFor final.fenix)
               ];
-          })
-
-          (final: prev: {
-            cargo2nix = inputs.cargo2nix.packages.${system}.default;
           })
         ];
       };
@@ -75,6 +73,28 @@
         saffi = (rustPkgs.workspace.www-saffi { }).out;
         saffi-dev = (rustPkgs.workspace.www-saffi-dev { }).bin;
         saffi-wtf = (rustPkgs.workspace.www-saffi-wtf { }).bin;
+
+        saffi-wtf-content = pkgs.stdenv.mkDerivation {
+          name = "saffi-wtf-content";
+          src = ./saffi-wtf/content;
+
+          phases = "installPhase";
+          installPhase = ''
+            mkdir -p $out
+            cp -vrf $src/* $out
+          '';
+        };
+
+        saffi-wtf-static = pkgs.stdenv.mkDerivation {
+          name = "saffi-wtf-static";
+          src = ./saffi-wtf/static;
+
+          phases = "installPhase";
+          installPhase = ''
+            mkdir -p $out
+            cp -vrf $src/* $out
+          '';
+        };
       };
 
       apps = rec {
