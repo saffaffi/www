@@ -1,23 +1,9 @@
-use maud::{html, Markup, PreEscaped, DOCTYPE};
-use syntect::html::{css_for_theme_with_class_style, ClassStyle};
+use maud::{html, Markup, DOCTYPE};
 
-use crate::state::ThemeSet;
+use crate::state::Theme;
 
-pub fn head(theme_set: ThemeSet) -> Markup {
-    let light_css = css_for_theme_with_class_style(
-        theme_set.0.themes.get("OneHalfLight").unwrap(),
-        ClassStyle::Spaced,
-    )
-    .unwrap();
-    let light_block = format!(":root {{ {light_css} }}");
-
-    let dark_css = css_for_theme_with_class_style(
-        theme_set.0.themes.get("OneHalfDark").unwrap(),
-        ClassStyle::Spaced,
-    )
-    .unwrap();
-    let dark_block = format!("@media(prefers-color-scheme: dark) {{ :root{{ {dark_css} }} }}");
-
+pub async fn head(theme: Theme) -> Markup {
+    let theme_header = theme.theme_header();
     html! {
         (DOCTYPE)
         head {
@@ -26,8 +12,7 @@ pub fn head(theme_set: ThemeSet) -> Markup {
             link rel="stylesheet" href="/style.css" type="text/css";
             title { "saffi, wtf?!" }
             style {
-                (PreEscaped(light_block))
-                (PreEscaped(dark_block))
+                (theme_header)
             }
         }
     }

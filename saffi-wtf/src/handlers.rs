@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use crate::{
     errors::HandlerError,
-    state::{Content, ThemeSet},
+    state::{Content, Theme},
     templates::pages,
 };
 
@@ -16,11 +16,11 @@ const STYLESHEET: &str = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
 
 pub async fn index(
     State(content): State<Content>,
-    State(theme_set): State<ThemeSet>,
+    State(theme): State<Theme>,
     request: Request<Body>,
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
-    Ok(pages::index(content, theme_set).await)
+    Ok(pages::index(content, theme).await)
 }
 
 pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, HandlerError> {

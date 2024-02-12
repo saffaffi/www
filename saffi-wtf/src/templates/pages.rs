@@ -1,14 +1,14 @@
 use maud::{html, Markup, PreEscaped};
 
 use crate::{
-    state::{Content, ThemeSet},
+    state::{Content, Theme},
     templates::wrappers,
 };
 
-pub async fn index(content: Content, theme_set: ThemeSet) -> Markup {
+pub async fn index(content: Content, theme: Theme) -> Markup {
     let page = content.pages.get("_index").unwrap();
     wrappers::base(
-        theme_set,
+        theme,
         html! {
             (PreEscaped(&page.html_content))
         },
@@ -16,9 +16,9 @@ pub async fn index(content: Content, theme_set: ThemeSet) -> Markup {
     .await
 }
 
-pub async fn not_found(theme_set: ThemeSet) -> Markup {
+pub async fn not_found(theme: Theme) -> Markup {
     wrappers::base(
-        theme_set,
+        theme,
         html! {
             main class="error" {
                 h1 {
@@ -34,9 +34,9 @@ pub async fn not_found(theme_set: ThemeSet) -> Markup {
     .await
 }
 
-pub async fn internal_error(theme_set: ThemeSet) -> Markup {
+pub async fn internal_error(theme: Theme) -> Markup {
     wrappers::base(
-        theme_set,
+        theme,
         html! {
             main class="error" {
                 h1 {

@@ -5,7 +5,12 @@ use camino::Utf8PathBuf;
 use comrak::{
     markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
 };
-use syntect::{highlighting::ThemeSet as SyntectThemeSet, LoadingError as SyntectLoadingError};
+use maud::{html, Markup, PreEscaped};
+use syntect::{
+    highlighting::ThemeSet as SyntectThemeSet,
+    html::{css_for_theme_with_class_style, ClassStyle},
+    Error as SyntectError, LoadingError as SyntectLoadingError,
+};
 use thiserror::Error;
 
 use crate::Args;
@@ -37,10 +42,6 @@ impl Config {
     pub fn load_state(self) -> Result<State, LoadStateError> {
         use LoadStateError::*;
 
-        let theme_set = SyntectThemeSet::load_from_folder(self.themes_path)
-            .map(Arc::new)
-            .map(ThemeSet)?;
-
         let syntect_adapter = SyntectAdapter::new(None);
         let plugins = {
             let mut plugins = ComrakPlugins::default();
@@ -61,7 +62,9 @@ impl Config {
         let pages = Arc::new(pages);
         let content = Content { pages };
 
-        Ok(State { content, theme_set })
+        let theme = SyntectThemeSet::load_from_folder(self.themes_path)?.try_into()?;
+
+        Ok(State { content, theme })
     }
 }
 
@@ -70,6 +73,9 @@ pub enum LoadStateError {
     #[error("failed to load theme set: {0}")]
     LoadThemeSet(#[from] SyntectLoadingError),
 
+    #[error(transparent)]
+    CreateThemeError(#[from] CreateThemeError),
+
     #[error("failed to read page content: {0}")]
     ReadPageContent(#[source] io::Error),
 }
@@ -77,7 +83,7 @@ pub enum LoadStateError {
 #[derive(Clone, Debug)]
 pub struct State {
     pub content: Content,
-    pub theme_set: ThemeSet,
+    pub theme: Theme,
 }
 
 #[derive(Clone, Debug)]
@@ -97,10 +103,53 @@ pub struct Page {
 }
 
 #[derive(Clone, Debug)]
-pub struct ThemeSet(pub Arc<SyntectThemeSet>);
+pub struct Theme {
+    theme_header: Markup,
+}
 
-impl FromRef<State> for ThemeSet {
+impl TryFrom<SyntectThemeSet> for Theme {
+    type Error = CreateThemeError;
+
+    fn try_from(theme_set: SyntectThemeSet) -> Result<Self, Self::Error> {
+        use CreateThemeError::*;
+
+        let light_css = css_for_theme_with_class_style(
+            theme_set.themes.get("OneHalfLight").unwrap(),
+            ClassStyle::Spaced,
+        )
+        .map_err(GenerateThemeCss)?;
+        let light_block = format!(":root {{ {light_css} }}");
+
+        let dark_css = css_for_theme_with_class_style(
+            theme_set.themes.get("OneHalfDark").unwrap(),
+            ClassStyle::Spaced,
+        )
+        .map_err(GenerateThemeCss)?;
+        let dark_block = format!("@media(prefers-color-scheme: dark) {{ :root{{ {dark_css} }} }}");
+
+        Ok(Self {
+            theme_header: html! {
+                (PreEscaped(light_block))
+                (PreEscaped(dark_block))
+            },
+        })
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum CreateThemeError {
+    #[error("failed to generate CSS for theme: {0}")]
+    GenerateThemeCss(#[source] SyntectError),
+}
+
+impl Theme {
+    pub fn theme_header(&self) -> &Markup {
+        &self.theme_header
+    }
+}
+
+impl FromRef<State> for Theme {
     fn from_ref(input: &State) -> Self {
-        input.theme_set.clone()
+        input.theme.clone()
     }
 }
