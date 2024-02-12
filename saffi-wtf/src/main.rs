@@ -9,8 +9,11 @@ use tower::ServiceExt;
 use tower_http::services::ServeDir;
 use tracing::info;
 
+use crate::state::Config;
+
 mod errors;
 mod handlers;
+mod state;
 mod templates;
 
 #[derive(Parser, Clone, Debug)]
@@ -28,29 +31,6 @@ pub struct Args {
     themes_path: Utf8PathBuf,
 }
 
-#[derive(Clone, Debug)]
-pub struct AppState {
-    content_path: Utf8PathBuf,
-    static_path: Utf8PathBuf,
-    themes_path: Utf8PathBuf,
-}
-
-impl From<Args> for AppState {
-    fn from(args: Args) -> Self {
-        let Args {
-            content_path,
-            static_path,
-            themes_path,
-            ..
-        } = args;
-        Self {
-            content_path,
-            static_path,
-            themes_path,
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().ok();
@@ -61,7 +41,7 @@ async fn main() {
     info!(addr = %args.address, "starting server");
     let listener = TcpListener::bind(&args.address).await.unwrap();
 
-    let state = AppState::from(args);
+    let config = Config::from(args);
 
     let app = Router::new()
         .route("/", get(handlers::index))
@@ -69,7 +49,7 @@ async fn main() {
 
     let app = app.nest_service(
         "/static",
-        ServeDir::new(&state.static_path).map_request(|req: Request<Body>| {
+        ServeDir::new(&config.static_path).map_request(|req: Request<Body>| {
             info!(route = %req.uri(), under = %"/static", "handling nested request");
             req
         }),
@@ -77,6 +57,8 @@ async fn main() {
 
     #[cfg(debug_assertions)]
     let app = app.route("/break", get(handlers::internal_error));
+
+    let state = config.load_state().expect("able to load state from config");
 
     let app = app
         .fallback(handlers::not_found)

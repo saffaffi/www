@@ -1,23 +1,18 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
-use syntect::{
-    highlighting::ThemeSet,
-    html::{css_for_theme_with_class_style, ClassStyle},
-};
+use syntect::html::{css_for_theme_with_class_style, ClassStyle};
 
-use crate::AppState;
+use crate::state::ThemeSet;
 
-pub async fn head(state: AppState) -> Markup {
-    let theme_set = ThemeSet::load_from_folder(state.themes_path).unwrap();
-
+pub fn head(theme_set: ThemeSet) -> Markup {
     let light_css = css_for_theme_with_class_style(
-        theme_set.themes.get("OneHalfLight").unwrap(),
+        theme_set.0.themes.get("OneHalfLight").unwrap(),
         ClassStyle::Spaced,
     )
     .unwrap();
     let light_block = format!(":root {{ {light_css} }}");
 
     let dark_css = css_for_theme_with_class_style(
-        theme_set.themes.get("OneHalfDark").unwrap(),
+        theme_set.0.themes.get("OneHalfDark").unwrap(),
         ClassStyle::Spaced,
     )
     .unwrap();

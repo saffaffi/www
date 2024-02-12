@@ -7,7 +7,7 @@ use axum::{
 };
 use thiserror::Error;
 
-use crate::{templates::pages, AppState};
+use crate::{state::ThemeSet, templates::pages};
 
 /// Errors that can be returned by request handlers.
 #[derive(Error, Clone, Debug)]
@@ -42,7 +42,7 @@ impl IntoResponse for HandlerError {
 ///
 /// This is done so that state can be accessed when rendering errors.
 pub async fn render_error(
-    State(state): State<AppState>,
+    State(theme_set): State<ThemeSet>,
     request: Request<Body>,
     next: Next,
 ) -> Response {
@@ -51,12 +51,12 @@ pub async fn render_error(
     if let Some(handler_error) = response.extensions_mut().remove::<HandlerError>() {
         match handler_error {
             HandlerError::NotFound => {
-                let mut response = pages::not_found(state).await.into_response();
+                let mut response = pages::not_found(theme_set).await.into_response();
                 *response.status_mut() = StatusCode::NOT_FOUND;
                 response
             }
             HandlerError::InternalError => {
-                let mut response = pages::internal_error(state).await.into_response();
+                let mut response = pages::internal_error(theme_set).await.into_response();
                 *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
                 response
             }

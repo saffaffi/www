@@ -6,16 +6,21 @@ use axum::{
 use maud::Markup;
 use tracing::{info, warn};
 
-use crate::{errors::HandlerError, templates::pages, AppState};
+use crate::{
+    errors::HandlerError,
+    state::{Content, ThemeSet},
+    templates::pages,
+};
 
 const STYLESHEET: &str = include_str!(concat!(env!("OUT_DIR"), "/style.css"));
 
 pub async fn index(
-    State(state): State<AppState>,
+    State(content): State<Content>,
+    State(theme_set): State<ThemeSet>,
     request: Request<Body>,
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
-    Ok(pages::index(state).await)
+    Ok(pages::index(content, theme_set).await)
 }
 
 pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, HandlerError> {

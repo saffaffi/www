@@ -1,10 +1,10 @@
 use maud::{html, Markup};
 
-use crate::{templates::partials, AppState};
+use crate::{state::ThemeSet, templates::partials};
 
-pub async fn base(state: AppState, content: Markup) -> Markup {
+pub async fn base(theme_set: ThemeSet, content: Markup) -> Markup {
     html! {
-        (partials::head(state).await)
+        (partials::head(theme_set))
         body {
             h1 class="sitetitle" {
                 a href="/" {

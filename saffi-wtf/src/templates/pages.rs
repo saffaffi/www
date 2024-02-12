@@ -1,33 +1,24 @@
-use std::fs;
-
-use comrak::{
-    markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
-};
 use maud::{html, Markup, PreEscaped};
 
-use crate::{templates::wrappers, AppState};
+use crate::{
+    state::{Content, ThemeSet},
+    templates::wrappers,
+};
 
-pub async fn index(state: AppState) -> Markup {
-    let mut index_path = state.content_path.clone();
-    index_path.push("_index.md");
-    let raw_content = fs::read_to_string(index_path).unwrap();
-
-    let syntect_adapter = SyntectAdapter::new(None);
-
-    let plugins = {
-        let mut plugins = ComrakPlugins::default();
-        plugins.render.codefence_syntax_highlighter = Some(&syntect_adapter);
-        plugins
-    };
-    let options = ComrakOptions::default();
-    let html_content = markdown_to_html_with_plugins(&raw_content, &options, &plugins);
-
-    wrappers::base(state, PreEscaped(html_content)).await
+pub async fn index(content: Content, theme_set: ThemeSet) -> Markup {
+    let page = content.pages.get("_index").unwrap();
+    wrappers::base(
+        theme_set,
+        html! {
+            (PreEscaped(&page.html_content))
+        },
+    )
+    .await
 }
 
-pub async fn not_found(state: AppState) -> Markup {
+pub async fn not_found(theme_set: ThemeSet) -> Markup {
     wrappers::base(
-        state,
+        theme_set,
         html! {
             main class="error" {
                 h1 {
@@ -43,9 +34,9 @@ pub async fn not_found(state: AppState) -> Markup {
     .await
 }
 
-pub async fn internal_error(state: AppState) -> Markup {
+pub async fn internal_error(theme_set: ThemeSet) -> Markup {
     wrappers::base(
-        state,
+        theme_set,
         html! {
             main class="error" {
                 h1 {
