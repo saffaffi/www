@@ -1,6 +1,6 @@
 use cfg_if::cfg_if;
 use tokio::signal;
-use tracing::{info, warn};
+use tracing::info;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 pub fn init_tracing() {
@@ -46,8 +46,8 @@ pub async fn graceful_shutdown() {
     // Wait for either of those futures to complete, which means that one of the
     // termination signals has been received.
     tokio::select! {
-        _ = ctrl_c => warn!("ctrl-c received, starting graceful shutdown"),
-        _ = terminate => warn!("termination signal received, starting graceful shutdown"),
+        _ = ctrl_c => info!("ctrl-c received, starting graceful shutdown"),
+        _ = terminate => info!("termination signal received, starting graceful shutdown"),
     }
 
     info!("finished shutting down; see you soon!");
