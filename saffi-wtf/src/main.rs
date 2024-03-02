@@ -13,6 +13,7 @@ use crate::state::Config;
 
 mod errors;
 mod handlers;
+mod render;
 mod state;
 mod templates;
 

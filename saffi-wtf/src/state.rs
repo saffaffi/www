@@ -23,7 +23,10 @@ use tracing::info;
 use uuid::Uuid;
 use www_saffi::SwapResult;
 
-use crate::Args;
+use crate::{
+    render::{RenderPost, RenderStatic},
+    Args,
+};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -294,8 +297,8 @@ type PagesMap = HashMap<PageName, Page>;
 
 #[derive(Clone, Debug)]
 pub struct Content {
-    pub groups: Arc<GroupsMap>,
-    pub pages: Arc<PagesMap>,
+    groups: Arc<GroupsMap>,
+    pages: Arc<PagesMap>,
 }
 
 impl Content {
@@ -330,16 +333,15 @@ pub struct Group {
 
 #[derive(Clone, Debug)]
 pub struct Page {
-    pub frontmatter: Frontmatter,
-    pub html_content: String,
+    frontmatter: Frontmatter,
+    html_content: String,
 }
 
 impl Render for Page {
     fn render(&self) -> Markup {
-        html! {
-            main class="page" {
-                (PreEscaped(&self.html_content))
-            }
+        match self.frontmatter.type_ {
+            PageType::Post { ref date } => RenderPost::new(&self.html_content, date).render(),
+            PageType::Static => RenderStatic::new(&self.html_content).render(),
         }
     }
 }
