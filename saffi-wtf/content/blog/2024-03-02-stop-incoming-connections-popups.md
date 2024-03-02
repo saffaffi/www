@@ -1,4 +1,5 @@
 ---
+tags = ["macos", "tip", "development", "meta"]
 ---
 
 # Stop "Allow Incoming Connections?" Popups When Developing on macOS
