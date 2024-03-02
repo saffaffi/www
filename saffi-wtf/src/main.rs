@@ -7,7 +7,7 @@ use clap::Parser;
 use tokio::net::TcpListener;
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
-use tracing::info;
+use tracing::{error, info};
 
 use crate::state::Config;
 
@@ -43,7 +43,17 @@ async fn main() {
     let args = Args::parse();
 
     info!(addr = %args.address, "starting server");
-    let listener = TcpListener::bind(&args.address).await.unwrap();
+
+    let listener = match TcpListener::bind(&args.address).await {
+        Ok(listener) => {
+            info!(addr = %args.address, "bound TCP listener");
+            listener
+        }
+        Err(error) => {
+            error!(addr = %args.address, %error, "failed to bind TCP listener, aborting");
+            return;
+        }
+    };
 
     let config = Config::from(args);
 
@@ -64,10 +74,13 @@ async fn main() {
     #[cfg(debug_assertions)]
     let app = app.route("/break", get(handlers::internal_error));
 
-    let state = config
-        .load_state()
-        .await
-        .expect("able to load state from config");
+    let state = match config.load_state().await {
+        Ok(state) => state,
+        Err(error) => {
+            error!(%error, "failed to load state, aborting");
+            return;
+        }
+    };
 
     let app = app
         .fallback(handlers::not_found)
@@ -78,8 +91,15 @@ async fn main() {
         ))
         .with_state(state);
 
-    axum::serve(listener, app.into_make_service())
+    match axum::serve(listener, app.into_make_service())
         .with_graceful_shutdown(www_saffi::graceful_shutdown())
         .await
-        .unwrap();
+    {
+        Ok(_) => {
+            info!("app service exited normally");
+        }
+        Err(error) => {
+            error!(%error, "app service exited with error");
+        }
+    }
 }

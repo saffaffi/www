@@ -59,7 +59,8 @@ impl Config {
     pub async fn load_state(self) -> Result<State, LoadStateError> {
         use LoadStateError::*;
 
-        let theme = SyntectThemeSet::load_from_folder(self.themes_path)?.try_into()?;
+        let theme_set = SyntectThemeSet::load_from_folder(self.themes_path)?;
+        let theme = Theme::try_load(theme_set, "OneHalfLight", "OneHalfDark")?;
 
         let syntect_adapter = SyntectAdapter::new(None);
         let plugins = {
@@ -82,7 +83,7 @@ impl Config {
             let path = entry.path();
             let file_name = path
                 .file_stem()
-                .unwrap()
+                .ok_or_else(|| NoFileStem(entry.path()))?
                 .to_str()
                 .ok_or_else(|| PathInvalidUtf8(entry.path()))?
                 .to_owned();
@@ -108,7 +109,11 @@ impl Config {
                 name
             };
 
-            let file_ext = path.extension().unwrap().to_str().unwrap();
+            let file_ext = path
+                .extension()
+                .ok_or_else(|| NoFileExt(entry.path()))?
+                .to_str()
+                .ok_or_else(|| PathInvalidUtf8(entry.path()))?;
 
             if file_ext != "md" && file_ext != "markdown" {
                 panic!("found a file that's not markdown: {path:?}");
@@ -118,12 +123,12 @@ impl Config {
 
             let (raw_frontmatter, raw_markdown) = raw_content
                 .strip_prefix("---")
-                .unwrap()
+                .ok_or_else(|| MissingFrontmatter(entry.path()))?
                 .trim()
                 .split_once("---")
-                .unwrap();
+                .ok_or_else(|| MalformedFrontmatter(entry.path()))?;
 
-            let frontmatter = toml::from_str::<Frontmatter>(raw_frontmatter).unwrap();
+            let frontmatter = toml::from_str::<Frontmatter>(raw_frontmatter)?;
 
             if frontmatter.draft && !self.drafts {
                 info!(?page_name, "skipping draft");
@@ -186,7 +191,7 @@ pub enum LoadStateError {
     LoadThemeSet(#[from] SyntectLoadingError),
 
     #[error(transparent)]
-    CreateThemeError(#[from] CreateThemeError),
+    LoadThemeError(#[from] LoadThemeError),
 
     #[error("failed to read contents of dir: {0}")]
     ReadDir(#[source] io::Error),
@@ -196,6 +201,12 @@ pub enum LoadStateError {
 
     #[error("failed to access metadata of dir entry: {0}")]
     DirEntryMetadata(#[source] io::Error),
+
+    #[error("file path does not contain a file stem: {0}")]
+    NoFileStem(PathBuf),
+
+    #[error("file path does not contain an extension: {0}")]
+    NoFileExt(PathBuf),
 
     #[error("invalid UTF-8 in file path: {0}")]
     PathInvalidUtf8(PathBuf),
@@ -208,6 +219,15 @@ pub enum LoadStateError {
 
     #[error("failed to read page content: {0}")]
     ReadPageContent(#[source] io::Error),
+
+    #[error("page at path {0} does not begin with frontmatter")]
+    MissingFrontmatter(PathBuf),
+
+    #[error("frontmatter of page at path {0} is malformed")]
+    MalformedFrontmatter(PathBuf),
+
+    #[error("failed to parse page frontmatter: {0}")]
+    ParseFrontmatter(#[from] toml::de::Error),
 }
 
 #[derive(Clone, Debug)]
@@ -236,23 +256,18 @@ impl TryFrom<String> for GroupName {
         // Look for any characters that are not lowercase ASCII-alphabetic or
         // dashes. If any are found, this is an invalid group name, and the
         // invalid char will be returned in Some().
-        //
-        // So convert the Some(invalid_char) into a _backwards_ Result, where
-        // the invalid char is in the Ok or the valid group is in the Err. Swap
-        // the variants, then map the (now non-backwards) Err variant so the
-        // char is contained in a ParseGroupNameError::InvalidChar.
         raw.chars()
             .find(|&c| !(c.is_ascii_lowercase() || c == '-'))
+            .map(|inv| InvalidChar(raw.clone(), inv))
             .ok_or(GroupName::Named(raw))
             .swap()
-            .map_err(InvalidChar)
     }
 }
 
 #[derive(Error, Debug)]
 pub enum ParseGroupNameError {
-    #[error("group name contains invalid char '{0}'")]
-    InvalidChar(char),
+    #[error("group name \"{0}\" contains invalid char '{1}'")]
+    InvalidChar(String, char),
 }
 
 /// The name of a page, either parsed from a raw string or an index page, which
@@ -281,16 +296,11 @@ impl TryFrom<String> for PageName {
         // Look for any characters that are not lowercase ASCII-alphabetic or
         // dashes. If any are found, this is an invalid group name, and the
         // invalid char will be returned in Some().
-        //
-        // So convert the Some(invalid_char) into a _backwards_ Result, where
-        // the invalid char is in the Ok or the valid group is in the Err. Swap
-        // the variants, then map the (now non-backwards) Err variant so the
-        // char is contained in a ParsePageNameError::InvalidChar.
         raw.chars()
             .find(|&c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+            .map(|inv| InvalidChar(raw.clone(), inv))
             .ok_or(PageName::Named(raw))
             .swap()
-            .map_err(InvalidChar)
     }
 }
 
@@ -304,8 +314,8 @@ impl TryFrom<&str> for PageName {
 
 #[derive(Error, Debug)]
 pub enum ParsePageNameError {
-    #[error("page name contains invalid char '{0}'")]
-    InvalidChar(char),
+    #[error("page name \"{0}\" contains invalid char '{1}'")]
+    InvalidChar(String, char),
 }
 
 type GroupsMap = HashMap<GroupName, Group>;
@@ -380,21 +390,29 @@ pub struct Theme {
     theme_header: Markup,
 }
 
-impl TryFrom<SyntectThemeSet> for Theme {
-    type Error = CreateThemeError;
-
-    fn try_from(theme_set: SyntectThemeSet) -> Result<Self, Self::Error> {
-        use CreateThemeError::*;
+impl Theme {
+    pub fn try_load(
+        theme_set: SyntectThemeSet,
+        light: &'static str,
+        dark: &'static str,
+    ) -> Result<Self, LoadThemeError> {
+        use LoadThemeError::*;
 
         let light_css = css_for_theme_with_class_style(
-            theme_set.themes.get("OneHalfLight").unwrap(),
+            theme_set
+                .themes
+                .get(light)
+                .ok_or_else(|| MissingTheme(light))?,
             ClassStyle::Spaced,
         )
         .map_err(GenerateThemeCss)?;
         let light_block = format!(":root {{ {light_css} }}");
 
         let dark_css = css_for_theme_with_class_style(
-            theme_set.themes.get("OneHalfDark").unwrap(),
+            theme_set
+                .themes
+                .get(dark)
+                .ok_or_else(|| MissingTheme(dark))?,
             ClassStyle::Spaced,
         )
         .map_err(GenerateThemeCss)?;
@@ -410,9 +428,12 @@ impl TryFrom<SyntectThemeSet> for Theme {
 }
 
 #[derive(Error, Debug)]
-pub enum CreateThemeError {
+pub enum LoadThemeError {
     #[error("failed to generate CSS for theme: {0}")]
     GenerateThemeCss(#[source] SyntectError),
+
+    #[error("theme set does not contain a theme with name: {0}")]
+    MissingTheme(&'static str),
 }
 
 impl Theme {

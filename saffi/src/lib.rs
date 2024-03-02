@@ -16,8 +16,7 @@ pub fn init_tracing() {
     tracing_subscriber::registry()
         .with(
             EnvFilter::try_from_default_env()
-                .or_else(|_| EnvFilter::try_new("otel::tracing=trace,info"))
-                .unwrap(),
+                .unwrap_or_else(|_| EnvFilter::new("otel::tracing=trace,info")),
         )
         .with(fmt_layer)
         .init();
