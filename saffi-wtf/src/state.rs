@@ -30,6 +30,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct Config {
+    pub drafts: bool,
     pub content_path: Utf8PathBuf,
     pub static_path: Utf8PathBuf,
     pub themes_path: Utf8PathBuf,
@@ -38,12 +39,14 @@ pub struct Config {
 impl From<Args> for Config {
     fn from(args: Args) -> Self {
         let Args {
+            drafts,
             content_path,
             static_path,
             themes_path,
             ..
         } = args;
         Self {
+            drafts,
             content_path,
             static_path,
             themes_path,
@@ -112,18 +115,22 @@ impl Config {
                 .split_once("---")
                 .unwrap();
 
-            let frontmatter = toml::from_str(raw_frontmatter).unwrap();
-            let html_content = markdown_to_html(raw_markdown);
+            let frontmatter = toml::from_str::<Frontmatter>(raw_frontmatter).unwrap();
 
-            info!(?page_name, "loaded page");
+            if frontmatter.draft && !self.drafts {
+                info!(?page_name, "skipping draft");
+            } else {
+                info!(?page_name, "loaded page");
 
-            pages.insert(
-                page_name,
-                Page {
-                    frontmatter,
-                    html_content,
-                },
-            );
+                let html_content = markdown_to_html(raw_markdown);
+                pages.insert(
+                    page_name,
+                    Page {
+                        frontmatter,
+                        html_content,
+                    },
+                );
+            }
 
             Ok::<_, LoadStateError>((groups, pages))
         };
@@ -156,8 +163,8 @@ impl Config {
             }
         }
 
-        let groups = Arc::new(dbg!(groups));
-        let pages = Arc::new(dbg!(pages));
+        let groups = Arc::new(groups);
+        let pages = Arc::new(pages);
         let content = Content { groups, pages };
 
         Ok(State { content, theme })
@@ -350,6 +357,9 @@ impl Render for Page {
 pub struct Frontmatter {
     #[serde(flatten)]
     type_: PageType,
+
+    #[serde(default)]
+    draft: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -22,6 +22,9 @@ pub struct Args {
     #[arg(long, short, env = "ADDRESS", default_value = "0.0.0.0:4269")]
     address: SocketAddr,
 
+    #[arg(long, short, env = "DRAFTS")]
+    drafts: bool,
+
     #[arg(long, env = "CONTENT_PATH")]
     content_path: Utf8PathBuf,
 
