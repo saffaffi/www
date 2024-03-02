@@ -1,18 +1,15 @@
-use maud::{html, Markup, PreEscaped};
+use maud::{html, Markup};
 
 use crate::{
-    state::{Content, Theme},
+    state::{Page, Theme},
     templates::wrappers,
 };
 
-pub async fn index(content: Content, theme: Theme) -> Markup {
-    let page = content.pages.get("_index").unwrap();
+pub async fn page(page: &Page, theme: Theme) -> Markup {
     wrappers::base(
         theme,
         html! {
-            main class="page" {
-                (PreEscaped(&page.html_content))
-            }
+            (page)
         },
     )
     .await

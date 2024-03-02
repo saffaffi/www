@@ -13,10 +13,13 @@ cfg-if.workspace = true
 comrak.workspace = true
 dotenv.workspace = true
 syntect.workspace = true
+tap.workspace = true
 thiserror.workspace = true
+toml.workspace = true
 tower.workspace = true
 tracing.workspace = true
 www-saffi.workspace = true
+futures.workspace = true
 
 [dependencies.clap]
 workspace = true
@@ -26,6 +29,10 @@ features = ["env"]
 workspace = true
 features = ["axum"]
 
+[dependencies.serde]
+workspace = true
+features = ["derive"]
+
 [dependencies.tokio]
 workspace = true
 features = ["full"]
@@ -33,6 +40,10 @@ features = ["full"]
 [dependencies.tower-http]
 workspace = true
 features = ["fs"]
+
+[dependencies.uuid]
+workspace = true
+features = ["v4"]
 
 [build-dependencies]
 grass.workspace = true

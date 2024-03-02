@@ -1,3 +1,7 @@
+---
+type = "static"
+---
+
 # heehee hoohoo
 
 i'm working on this. this is `placeholder content` until things are a *little*

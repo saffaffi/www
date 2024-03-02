@@ -45,6 +45,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(handlers::index))
+        .route("/:group", get(handlers::group))
+        .route("/:group/:page", get(handlers::page))
         .route("/style.css", get(handlers::stylesheet));
 
     let app = app.nest_service(
@@ -58,7 +60,10 @@ async fn main() {
     #[cfg(debug_assertions)]
     let app = app.route("/break", get(handlers::internal_error));
 
-    let state = config.load_state().expect("able to load state from config");
+    let state = config
+        .load_state()
+        .await
+        .expect("able to load state from config");
 
     let app = app
         .fallback(handlers::not_found)

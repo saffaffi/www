@@ -1,17 +1,27 @@
-use std::{collections::HashMap, fs, io, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use axum::extract::FromRef;
 use camino::Utf8PathBuf;
 use comrak::{
     markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
 };
-use maud::{html, Markup, PreEscaped};
+use maud::{html, Markup, PreEscaped, Render};
+use serde::Deserialize;
 use syntect::{
     highlighting::ThemeSet as SyntectThemeSet,
     html::{css_for_theme_with_class_style, ClassStyle},
     Error as SyntectError, LoadingError as SyntectLoadingError,
 };
 use thiserror::Error;
+use tokio::fs::{self, DirEntry};
+use tracing::info;
+use uuid::Uuid;
+use www_saffi::SwapResult;
 
 use crate::Args;
 
@@ -39,8 +49,10 @@ impl From<Args> for Config {
 }
 
 impl Config {
-    pub fn load_state(self) -> Result<State, LoadStateError> {
+    pub async fn load_state(self) -> Result<State, LoadStateError> {
         use LoadStateError::*;
+
+        let theme = SyntectThemeSet::load_from_folder(self.themes_path)?.try_into()?;
 
         let syntect_adapter = SyntectAdapter::new(None);
         let plugins = {
@@ -50,19 +62,100 @@ impl Config {
         };
         let options = ComrakOptions::default();
 
-        let mut index_path = self.content_path.clone();
-        index_path.push("_index.md");
-        let raw_content = fs::read_to_string(index_path).map_err(ReadPageContent)?;
+        let markdown_to_html = |md: &str| markdown_to_html_with_plugins(md, &options, &plugins);
 
-        let html_content = markdown_to_html_with_plugins(&raw_content, &options, &plugins);
+        let mut groups = GroupsMap::new();
+        let mut pages = HashMap::new();
+        let mut groups_to_load = Vec::new();
 
-        let mut pages = HashMap::default();
-        pages.insert("_index".into(), Page { html_content });
+        let load_page = |entry: DirEntry,
+                         group_context: GroupName,
+                         mut groups: GroupsMap,
+                         mut pages: PagesMap| async move {
+            let path = entry.path();
+            let file_name = path
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .ok_or_else(|| PathInvalidUtf8(entry.path()))?
+                .to_owned();
 
-        let pages = Arc::new(pages);
-        let content = Content { pages };
+            let page_name: PageName = if file_name == "_index" {
+                let name = PageName::new_index();
+                groups.entry(group_context).or_default().index = Some(name.clone());
+                name
+            } else {
+                let name: PageName = file_name.try_into()?;
+                groups
+                    .entry(group_context)
+                    .or_default()
+                    .members
+                    .insert(name.clone());
+                name
+            };
 
-        let theme = SyntectThemeSet::load_from_folder(self.themes_path)?.try_into()?;
+            let file_ext = path.extension().unwrap().to_str().unwrap();
+
+            if file_ext != "md" && file_ext != "markdown" {
+                panic!("found a file that's not markdown: {path:?}");
+            }
+
+            let raw_content = fs::read_to_string(&path).await.map_err(ReadPageContent)?;
+
+            let (raw_frontmatter, raw_markdown) = raw_content
+                .strip_prefix("---")
+                .unwrap()
+                .trim()
+                .split_once("---")
+                .unwrap();
+
+            let frontmatter = toml::from_str(raw_frontmatter).unwrap();
+            let html_content = markdown_to_html(raw_markdown);
+
+            info!(?page_name, "loaded page");
+
+            pages.insert(
+                page_name,
+                Page {
+                    frontmatter,
+                    html_content,
+                },
+            );
+
+            Ok::<_, LoadStateError>((groups, pages))
+        };
+
+        let mut top_level_reader = fs::read_dir(&self.content_path).await.map_err(ReadDir)?;
+        while let Some(entry) = top_level_reader.next_entry().await.map_err(ReadDirEntry)? {
+            if entry.metadata().await.map_err(DirEntryMetadata)?.is_file() {
+                (groups, pages) = load_page(entry, GroupName::Root, groups, pages).await?;
+            } else {
+                let group_name = entry
+                    .file_name()
+                    .to_str()
+                    .ok_or_else(|| PathInvalidUtf8(entry.path()))?
+                    .to_string();
+                let group: GroupName = group_name.try_into()?;
+                groups.insert(group.clone(), <_>::default());
+                groups_to_load.push((entry.path(), group));
+            }
+        }
+
+        for (group_path, group) in groups_to_load {
+            let mut group_reader = fs::read_dir(group_path).await.map_err(ReadDir)?;
+
+            while let Some(entry) = group_reader.next_entry().await.map_err(ReadDirEntry)? {
+                if entry.metadata().await.map_err(DirEntryMetadata)?.is_file() {
+                    (groups, pages) = load_page(entry, group.clone(), groups, pages).await?;
+                } else {
+                    info!(path = ?entry.path(), "skipping nested group");
+                }
+            }
+        }
+
+        let groups = Arc::new(dbg!(groups));
+        let pages = Arc::new(dbg!(pages));
+        let content = Content { groups, pages };
 
         Ok(State { content, theme })
     }
@@ -76,6 +169,24 @@ pub enum LoadStateError {
     #[error(transparent)]
     CreateThemeError(#[from] CreateThemeError),
 
+    #[error("failed to read contents of dir: {0}")]
+    ReadDir(#[source] io::Error),
+
+    #[error("failed to read dir entry: {0}")]
+    ReadDirEntry(#[source] io::Error),
+
+    #[error("failed to access metadata of dir entry: {0}")]
+    DirEntryMetadata(#[source] io::Error),
+
+    #[error("invalid UTF-8 in file path: {0}")]
+    PathInvalidUtf8(PathBuf),
+
+    #[error(transparent)]
+    ParseGroupError(#[from] ParseGroupNameError),
+
+    #[error(transparent)]
+    ParsePageNameError(#[from] ParsePageNameError),
+
     #[error("failed to read page content: {0}")]
     ReadPageContent(#[source] io::Error),
 }
@@ -86,9 +197,123 @@ pub struct State {
     pub theme: Theme,
 }
 
+/// The name of a group, either parsed from a raw string or the root group
+/// (which has no name).
+///
+/// Group names are single path components in a URL, containing only lowercase
+/// ASCII-alphabetic characters and dashes.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum GroupName {
+    Root,
+    Named(String),
+}
+
+impl TryFrom<String> for GroupName {
+    type Error = ParseGroupNameError;
+
+    fn try_from(raw: String) -> Result<Self, Self::Error> {
+        use ParseGroupNameError::*;
+
+        // Look for any characters that are not lowercase ASCII-alphabetic or
+        // dashes. If any are found, this is an invalid group name, and the
+        // invalid char will be returned in Some().
+        //
+        // So convert the Some(invalid_char) into a _backwards_ Result, where
+        // the invalid char is in the Ok or the valid group is in the Err. Swap
+        // the variants, then map the (now non-backwards) Err variant so the
+        // char is contained in a ParseGroupNameError::InvalidChar.
+        raw.chars()
+            .find(|&c| !(c.is_ascii_lowercase() || c == '-'))
+            .ok_or(GroupName::Named(raw))
+            .swap()
+            .map_err(InvalidChar)
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum ParseGroupNameError {
+    #[error("group name contains invalid char '{0}'")]
+    InvalidChar(char),
+}
+
+/// The name of a page, either parsed from a raw string or an index page, which
+/// has no name beyond the name of the group it's contained in.
+///
+/// Page names are single path components in a URL, containing only numerals,
+/// lowercase ASCII-alphabetic characters and dashes.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum PageName {
+    Index(Uuid),
+    Named(String),
+}
+
+impl PageName {
+    pub fn new_index() -> Self {
+        Self::Index(Uuid::new_v4())
+    }
+}
+
+impl TryFrom<String> for PageName {
+    type Error = ParsePageNameError;
+
+    fn try_from(raw: String) -> Result<Self, Self::Error> {
+        use ParsePageNameError::*;
+
+        // Look for any characters that are not lowercase ASCII-alphabetic or
+        // dashes. If any are found, this is an invalid group name, and the
+        // invalid char will be returned in Some().
+        //
+        // So convert the Some(invalid_char) into a _backwards_ Result, where
+        // the invalid char is in the Ok or the valid group is in the Err. Swap
+        // the variants, then map the (now non-backwards) Err variant so the
+        // char is contained in a ParsePageNameError::InvalidChar.
+        raw.chars()
+            .find(|&c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+            .ok_or(PageName::Named(raw))
+            .swap()
+            .map_err(InvalidChar)
+    }
+}
+
+impl TryFrom<&str> for PageName {
+    type Error = ParsePageNameError;
+
+    fn try_from(raw: &str) -> Result<Self, Self::Error> {
+        Self::try_from(raw.to_owned())
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum ParsePageNameError {
+    #[error("page name contains invalid char '{0}'")]
+    InvalidChar(char),
+}
+
+type GroupsMap = HashMap<GroupName, Group>;
+type PagesMap = HashMap<PageName, Page>;
+
 #[derive(Clone, Debug)]
 pub struct Content {
-    pub pages: Arc<HashMap<String, Page>>,
+    pub groups: Arc<GroupsMap>,
+    pub pages: Arc<PagesMap>,
+}
+
+impl Content {
+    pub fn index(&self, group_name: &GroupName) -> Option<&Page> {
+        let page_name = self
+            .groups
+            .get(group_name)
+            .and_then(|group| group.index.as_ref())?;
+        self.pages.get(page_name)
+    }
+
+    pub fn page(&self, group_name: &GroupName, page_name: &PageName) -> Option<&Page> {
+        let page_name = self
+            .groups
+            .get(group_name)
+            .and_then(|group| group.members.get(page_name))?;
+        self.pages.get(page_name)
+    }
 }
 
 impl FromRef<State> for Content {
@@ -97,9 +322,39 @@ impl FromRef<State> for Content {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct Group {
+    index: Option<PageName>,
+    members: HashSet<PageName>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Page {
+    pub frontmatter: Frontmatter,
     pub html_content: String,
+}
+
+impl Render for Page {
+    fn render(&self) -> Markup {
+        html! {
+            main class="page" {
+                (PreEscaped(&self.html_content))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Frontmatter {
+    #[serde(flatten)]
+    type_: PageType,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum PageType {
+    Post { date: String },
+    Static,
 }
 
 #[derive(Clone, Debug)]

@@ -3,6 +3,10 @@ use tokio::signal;
 use tracing::info;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod swap_result;
+
+pub use swap_result::SwapResult;
+
 pub fn init_tracing() {
     #[cfg(debug_assertions)]
     let fmt_layer = fmt::layer().with_timer(fmt::time::uptime()).pretty();
