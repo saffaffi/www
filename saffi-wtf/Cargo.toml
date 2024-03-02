@@ -10,6 +10,7 @@ axum-tracing-opentelemetry.workspace = true
 axum.workspace = true
 camino.workspace = true
 cfg-if.workspace = true
+chrono.workspace = true
 comrak.workspace = true
 dotenv.workspace = true
 syntect.workspace = true

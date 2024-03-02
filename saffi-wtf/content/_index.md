@@ -1,5 +1,4 @@
 ---
-type = "static"
 ---
 
 # heehee hoohoo

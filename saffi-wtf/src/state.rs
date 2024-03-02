@@ -7,6 +7,7 @@ use std::{
 
 use axum::extract::FromRef;
 use camino::Utf8PathBuf;
+use chrono::naive::NaiveDate;
 use comrak::{
     markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
 };
@@ -86,6 +87,13 @@ impl Config {
                 .ok_or_else(|| PathInvalidUtf8(entry.path()))?
                 .to_owned();
 
+            let page_type =
+                if let Ok((date, _)) = NaiveDate::parse_and_remainder(&file_name, "%Y-%m-%d") {
+                    PageType::Post { date }
+                } else {
+                    PageType::Static
+                };
+
             let page_name: PageName = if file_name == "_index" {
                 let name = PageName::new_index();
                 groups.entry(group_context).or_default().index = Some(name.clone());
@@ -126,6 +134,7 @@ impl Config {
                 pages.insert(
                     page_name,
                     Page {
+                        page_type,
                         frontmatter,
                         html_content,
                     },
@@ -340,33 +349,30 @@ pub struct Group {
 
 #[derive(Clone, Debug)]
 pub struct Page {
+    page_type: PageType,
     frontmatter: Frontmatter,
     html_content: String,
 }
 
 impl Render for Page {
     fn render(&self) -> Markup {
-        match self.frontmatter.type_ {
+        match self.page_type {
             PageType::Post { ref date } => RenderPost::new(&self.html_content, date).render(),
             PageType::Static => RenderStatic::new(&self.html_content).render(),
         }
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct Frontmatter {
-    #[serde(flatten)]
-    type_: PageType,
-
-    #[serde(default)]
-    draft: bool,
+#[derive(Clone, Debug)]
+pub enum PageType {
+    Post { date: NaiveDate },
+    Static,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum PageType {
-    Post { date: String },
-    Static,
+pub struct Frontmatter {
+    #[serde(default)]
+    draft: bool,
 }
 
 #[derive(Clone, Debug)]

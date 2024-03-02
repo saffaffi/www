@@ -1,12 +1,13 @@
+use chrono::NaiveDate;
 use maud::{html, Markup, PreEscaped, Render};
 
 pub struct RenderPost<'p> {
     content: &'p str,
-    date: &'p str,
+    date: &'p NaiveDate,
 }
 
 impl<'p> RenderPost<'p> {
-    pub fn new(content: &'p str, date: &'p str) -> Self {
+    pub fn new(content: &'p str, date: &'p NaiveDate) -> Self {
         Self { content, date }
     }
 }

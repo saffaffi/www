@@ -1,6 +1,4 @@
 ---
-type = "post"
-date = "2024-03-02"
 ---
 
 # Stop "Allow Incoming Connections?" Popups When Developing on macOS
