@@ -119,9 +119,7 @@ impl Config {
 
             let raw_content = fs::read_to_string(&path).await.map_err(ReadPageContent)?;
 
-            let (page_type, raw_markdown) = if let Ok((date, _)) =
-                NaiveDate::parse_and_remainder(&file_name, "%Y-%m-%d")
-            {
+            if let Ok((date, _)) = NaiveDate::parse_and_remainder(&file_name, "%Y-%m-%d") {
                 let (raw_frontmatter, raw_markdown) = raw_content
                     .strip_prefix("---")
                     .ok_or_else(|| MissingFrontmatter(entry.path()))?
@@ -138,7 +136,22 @@ impl Config {
                         .insert(page_name.clone());
                 }
 
-                (PageType::Post { date, frontmatter }, raw_markdown)
+                if frontmatter.draft && !self.drafts {
+                    info!(?path, "skipping draft");
+                } else {
+                    let html_content = markdown_to_html(raw_markdown);
+
+                    pages.insert(
+                        page_name,
+                        Page::Post {
+                            date,
+                            frontmatter,
+                            html_content,
+                        },
+                    );
+
+                    info!(?path, "loaded post");
+                }
             } else {
                 let raw_markdown = if let Some(stripped_once) = raw_content.strip_prefix("---") {
                     // For now, we're ignoring any frontmatter. Later, when static pages need
@@ -152,23 +165,12 @@ impl Config {
                     raw_content.as_str()
                 };
 
-                (PageType::Static, raw_markdown)
-            };
-
-            if page_type.is_draft() && !self.drafts {
-                info!(?path, "skipping draft");
-            } else {
-                info!(?path, "loaded page");
-
                 let html_content = markdown_to_html(raw_markdown);
-                pages.insert(
-                    page_name,
-                    Page {
-                        page_type,
-                        html_content,
-                    },
-                );
-            }
+
+                pages.insert(page_name, Page::Static { html_content });
+
+                info!(?path, "loaded static page");
+            };
 
             Ok::<_, LoadStateError>((groups, tags, pages))
         };
@@ -457,34 +459,26 @@ pub struct Tag {
 }
 
 #[derive(Clone, Debug)]
-pub struct Page {
-    page_type: PageType,
-    html_content: String,
+pub enum Page {
+    Post {
+        date: NaiveDate,
+        frontmatter: PostFrontmatter,
+        html_content: String,
+    },
+    Static {
+        html_content: String,
+    },
 }
 
 impl Render for Page {
     fn render(&self) -> Markup {
-        match self.page_type {
-            PageType::Post { ref date, .. } => RenderPost::new(&self.html_content, date).render(),
-            PageType::Static => RenderStatic::new(&self.html_content).render(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum PageType {
-    Post {
-        date: NaiveDate,
-        frontmatter: PostFrontmatter,
-    },
-    Static,
-}
-
-impl PageType {
-    fn is_draft(&self) -> bool {
         match self {
-            PageType::Post { frontmatter, .. } => frontmatter.draft,
-            PageType::Static => false,
+            Page::Post {
+                ref date,
+                ref html_content,
+                ..
+            } => RenderPost::new(html_content, date).render(),
+            Page::Static { ref html_content } => RenderStatic::new(html_content).render(),
         }
     }
 }
