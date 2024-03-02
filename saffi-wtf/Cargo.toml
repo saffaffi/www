@@ -19,7 +19,6 @@ toml.workspace = true
 tower.workspace = true
 tracing.workspace = true
 www-saffi.workspace = true
-futures.workspace = true
 
 [dependencies.clap]
 workspace = true
