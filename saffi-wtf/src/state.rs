@@ -208,10 +208,10 @@ impl Config {
             }
         }
 
-        let groups = Arc::new(dbg!(groups));
-        let tags = Arc::new(dbg!(tags));
-        let pages = Arc::new(dbg!(pages));
-        let posts = Arc::new(dbg!(posts));
+        let groups = Arc::new(groups);
+        let tags = Arc::new(tags);
+        let pages = Arc::new(pages);
+        let posts = Arc::new(posts);
         let content = Content {
             groups,
             tags,
