@@ -49,7 +49,12 @@ pub async fn graceful_shutdown() {
     // Wait for either of those futures to complete, which means that one of the
     // termination signals has been received.
     tokio::select! {
-        _ = ctrl_c => info!("ctrl-c received, starting graceful shutdown"),
+        _ = ctrl_c => {
+            // Print a newline to move past the rightward drift created by
+            // terminals printing the ctrl-C escape sequence.
+            println!();
+            info!("ctrl-c received, starting graceful shutdown")
+        },
         _ = terminate => info!("termination signal received, starting graceful shutdown"),
     }
 
