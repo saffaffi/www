@@ -9,7 +9,7 @@ pub use result_option_exts::{OptionExt, ResultExt};
 
 pub fn init_tracing() {
     #[cfg(debug_assertions)]
-    let fmt_layer = fmt::layer().with_timer(fmt::time::uptime()).pretty();
+    let fmt_layer = fmt::layer().with_timer(fmt::time::uptime());
     #[cfg(not(debug_assertions))]
     let fmt_layer = fmt::layer();
 
