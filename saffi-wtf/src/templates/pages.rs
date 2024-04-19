@@ -1,15 +1,38 @@
 use maud::{html, Markup};
 
 use crate::{
-    state::{Page, Theme},
+    state::{
+        render::{GroupRef, PostRef, TagRef},
+        Theme,
+    },
     templates::wrappers,
 };
 
-pub async fn page(page: &Page, theme: Theme) -> Markup {
+pub async fn post(page: PostRef<'_>, theme: Theme) -> Markup {
     wrappers::base(
         theme,
         html! {
             (page)
+        },
+    )
+    .await
+}
+
+pub async fn group(group: GroupRef<'_>, theme: Theme) -> Markup {
+    wrappers::base(
+        theme,
+        html! {
+            (group)
+        },
+    )
+    .await
+}
+
+pub async fn tagged(_tag: TagRef<'_>, theme: Theme) -> Markup {
+    wrappers::base(
+        theme,
+        html! {
+            ("nothing here yet")
         },
     )
     .await

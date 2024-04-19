@@ -13,7 +13,6 @@ use crate::state::Config;
 
 mod errors;
 mod handlers;
-mod render;
 mod state;
 mod templates;
 
@@ -60,7 +59,8 @@ async fn main() {
     let app = Router::new()
         .route("/", get(handlers::index))
         .route("/:group", get(handlers::group))
-        .route("/:group/:page", get(handlers::page))
+        .route("/:group/:post", get(handlers::post))
+        .route("/tagged/:tag", get(handlers::tagged))
         .route("/style.css", get(handlers::stylesheet));
 
     let app = app.nest_service(

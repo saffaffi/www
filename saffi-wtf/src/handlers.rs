@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use crate::{
     errors::HandlerError,
-    state::{Content, GroupName, Theme},
+    state::{names::GroupName, Content, Theme},
     templates::pages,
 };
 
@@ -21,8 +21,8 @@ pub async fn index(
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
 
-    if let Some(page) = content.index(&GroupName::Root) {
-        Ok(pages::page(page, theme).await)
+    if let Some(group) = content.group(&GroupName::Root) {
+        Ok(pages::group(group, theme).await)
     } else {
         Err(not_found(request).await)
     }
@@ -39,30 +39,45 @@ pub async fn group(
     if let Some(page) = group
         .try_into()
         .ok()
-        .and_then(|group| content.index(&group))
+        .and_then(|group| content.group(&group))
     {
-        Ok(pages::page(page, theme).await)
+        Ok(pages::group(page, theme).await)
     } else {
         Err(not_found(request).await)
     }
 }
 
-pub async fn page(
+pub async fn tagged(
     State(content): State<Content>,
     State(theme): State<Theme>,
-    Path((group, page)): Path<(String, String)>,
+    Path(tag): Path<String>,
+    request: Request<Body>,
+) -> Result<Markup, HandlerError> {
+    info!(route = %request.uri(), "handling request");
+
+    if let Some(page) = tag.try_into().ok().and_then(|tag| content.tag(&tag)) {
+        Ok(pages::tagged(page, theme).await)
+    } else {
+        Err(not_found(request).await)
+    }
+}
+
+pub async fn post(
+    State(content): State<Content>,
+    State(theme): State<Theme>,
+    Path((group, post)): Path<(String, String)>,
     request: Request<Body>,
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
 
     let group = group.try_into().ok();
-    let page = page.try_into().ok();
+    let post = post.try_into().ok();
 
-    if let Some(page) = group
-        .zip(page)
-        .and_then(|(group, page)| content.page(&group, &page))
+    if let Some(post) = group
+        .zip(post)
+        .and_then(|(group, post)| content.post(&group, &post))
     {
-        Ok(pages::page(page, theme).await)
+        Ok(pages::post(post, theme).await)
     } else {
         Err(not_found(request).await)
     }

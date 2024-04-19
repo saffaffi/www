@@ -3,9 +3,9 @@ use tokio::signal;
 use tracing::info;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod swap_result;
+mod result_option_exts;
 
-pub use swap_result::SwapResult;
+pub use result_option_exts::{OptionExt, ResultExt};
 
 pub fn init_tracing() {
     #[cfg(debug_assertions)]

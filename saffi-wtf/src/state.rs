@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt, io,
+    io,
     path::PathBuf,
     sync::Arc,
 };
@@ -11,11 +11,8 @@ use chrono::naive::NaiveDate;
 use comrak::{
     markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
 };
-use maud::{html, Markup, PreEscaped, Render};
-use serde::{
-    de::{self, Visitor},
-    Deserialize, Deserializer,
-};
+use maud::{html, Markup, PreEscaped};
+use serde::Deserialize;
 use syntect::{
     highlighting::ThemeSet as SyntectThemeSet,
     html::{css_for_theme_with_class_style, ClassStyle},
@@ -24,13 +21,17 @@ use syntect::{
 use thiserror::Error;
 use tokio::fs::{self, DirEntry};
 use tracing::info;
-use uuid::Uuid;
-use www_saffi::SwapResult;
 
 use crate::{
-    render::{RenderPost, RenderStatic},
+    state::{
+        names::{GroupName, PageName, ParseGroupNameError, ParsePageNameError, TagName},
+        render::{GroupRef, PostRef, TagRef},
+    },
     Args,
 };
+
+pub mod names;
+pub mod render;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -77,14 +78,16 @@ impl Config {
 
         let mut groups = GroupsMap::new();
         let mut tags = TagsMap::new();
-        let mut pages = HashMap::new();
+        let mut pages = PagesMap::new();
+        let mut posts = PostsMap::new();
         let mut groups_to_load = Vec::new();
 
         let load_page = |entry: DirEntry,
                          group_context: GroupName,
                          mut groups: GroupsMap,
                          mut tags: TagsMap,
-                         mut pages: PagesMap| async move {
+                         mut pages: PagesMap,
+                         mut posts: PostsMap| async move {
             let path = entry.path();
             let file_name = path
                 .file_stem()
@@ -141,9 +144,9 @@ impl Config {
                 } else {
                     let html_content = markdown_to_html(raw_markdown);
 
-                    pages.insert(
+                    posts.insert(
                         page_name,
-                        Page::Post {
+                        Post {
                             date,
                             frontmatter,
                             html_content,
@@ -167,19 +170,19 @@ impl Config {
 
                 let html_content = markdown_to_html(raw_markdown);
 
-                pages.insert(page_name, Page::Static { html_content });
+                pages.insert(page_name, Page { html_content });
 
                 info!(?path, "loaded static page");
             };
 
-            Ok::<_, LoadStateError>((groups, tags, pages))
+            Ok::<_, LoadStateError>((groups, tags, pages, posts))
         };
 
         let mut top_level_reader = fs::read_dir(&self.content_path).await.map_err(ReadDir)?;
         while let Some(entry) = top_level_reader.next_entry().await.map_err(ReadDirEntry)? {
             if entry.metadata().await.map_err(DirEntryMetadata)?.is_file() {
-                (groups, tags, pages) =
-                    load_page(entry, GroupName::Root, groups, tags, pages).await?;
+                (groups, tags, pages, posts) =
+                    load_page(entry, GroupName::Root, groups, tags, pages, posts).await?;
             } else {
                 let group_name = entry
                     .file_name()
@@ -197,8 +200,8 @@ impl Config {
 
             while let Some(entry) = group_reader.next_entry().await.map_err(ReadDirEntry)? {
                 if entry.metadata().await.map_err(DirEntryMetadata)?.is_file() {
-                    (groups, tags, pages) =
-                        load_page(entry, group.clone(), groups, tags, pages).await?;
+                    (groups, tags, pages, posts) =
+                        load_page(entry, group.clone(), groups, tags, pages, posts).await?;
                 } else {
                     info!(path = ?entry.path(), "skipping nested group");
                 }
@@ -208,10 +211,12 @@ impl Config {
         let groups = Arc::new(dbg!(groups));
         let tags = Arc::new(dbg!(tags));
         let pages = Arc::new(dbg!(pages));
+        let posts = Arc::new(dbg!(posts));
         let content = Content {
             groups,
             tags,
             pages,
+            posts,
         };
 
         Ok(State { content, theme })
@@ -269,175 +274,44 @@ pub struct State {
     pub theme: Theme,
 }
 
-/// The name of a group, either parsed from a raw string or the root group
-/// (which has no name).
-///
-/// Group names are single path components in a URL, containing only lowercase
-/// ASCII-alphabetic characters and dashes.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum GroupName {
-    Root,
-    Named(String),
-}
-
-impl TryFrom<String> for GroupName {
-    type Error = ParseGroupNameError;
-
-    fn try_from(raw: String) -> Result<Self, Self::Error> {
-        use ParseGroupNameError::*;
-
-        // Look for any characters that are not lowercase ASCII-alphabetic or
-        // dashes. If any are found, this is an invalid group name, and the
-        // invalid char will be returned in Some().
-        raw.chars()
-            .find(|&c| !(c.is_ascii_lowercase() || c == '-'))
-            .map(|inv| InvalidChar(raw.clone(), inv))
-            .ok_or(GroupName::Named(raw))
-            .swap()
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum ParseGroupNameError {
-    #[error("group name \"{0}\" contains invalid char '{1}'")]
-    InvalidChar(String, char),
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct TagName(String);
-
-impl TryFrom<String> for TagName {
-    type Error = ParseTagNameError;
-
-    fn try_from(raw: String) -> Result<Self, Self::Error> {
-        use ParseTagNameError::*;
-
-        // Look for any characters that are not lowercase ASCII-alphabetic or
-        // dashes. If any are found, this is an invalid group name, and the
-        // invalid char will be returned in Some().
-        raw.chars()
-            .find(|&c| !(c.is_ascii_lowercase() || c == '-'))
-            .map(|inv| InvalidChar(raw.clone(), inv))
-            .ok_or(TagName(raw))
-            .swap()
-    }
-}
-
-impl TryFrom<&str> for TagName {
-    type Error = ParseTagNameError;
-
-    fn try_from(raw: &str) -> Result<Self, Self::Error> {
-        Self::try_from(raw.to_owned())
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum ParseTagNameError {
-    #[error("tag name \"{0}\" contains invalid char '{1}'")]
-    InvalidChar(String, char),
-}
-
-struct TagNameVisitor;
-
-impl<'de> Visitor<'de> for TagNameVisitor {
-    type Value = TagName;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter
-            .write_str("a string containing only lowercase ASCII-alphabetic characters or dashes")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        TagName::try_from(v).map_err(E::custom)
-    }
-}
-
-impl<'de> Deserialize<'de> for TagName {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_str(TagNameVisitor)
-    }
-}
-
-/// The name of a page, either parsed from a raw string or an index page, which
-/// has no name beyond the name of the group it's contained in.
-///
-/// Page names are single path components in a URL, containing only numerals,
-/// lowercase ASCII-alphabetic characters and dashes.
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum PageName {
-    Index(Uuid),
-    Named(String),
-}
-
-impl PageName {
-    pub fn new_index() -> Self {
-        Self::Index(Uuid::new_v4())
-    }
-}
-
-impl TryFrom<String> for PageName {
-    type Error = ParsePageNameError;
-
-    fn try_from(raw: String) -> Result<Self, Self::Error> {
-        use ParsePageNameError::*;
-
-        // Look for any characters that are not lowercase ASCII-alphabetic or
-        // dashes. If any are found, this is an invalid group name, and the
-        // invalid char will be returned in Some().
-        raw.chars()
-            .find(|&c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
-            .map(|inv| InvalidChar(raw.clone(), inv))
-            .ok_or(PageName::Named(raw))
-            .swap()
-    }
-}
-
-impl TryFrom<&str> for PageName {
-    type Error = ParsePageNameError;
-
-    fn try_from(raw: &str) -> Result<Self, Self::Error> {
-        Self::try_from(raw.to_owned())
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum ParsePageNameError {
-    #[error("page name \"{0}\" contains invalid char '{1}'")]
-    InvalidChar(String, char),
-}
+type PostName = PageName;
 
 type GroupsMap = HashMap<GroupName, Group>;
 type TagsMap = HashMap<TagName, Tag>;
 type PagesMap = HashMap<PageName, Page>;
+type PostsMap = HashMap<PostName, Post>;
 
 #[derive(Clone, Debug)]
 pub struct Content {
     groups: Arc<GroupsMap>,
     tags: Arc<TagsMap>,
     pages: Arc<PagesMap>,
+    posts: Arc<PostsMap>,
 }
 
 impl Content {
-    pub fn index(&self, group_name: &GroupName) -> Option<&Page> {
-        let page_name = self
-            .groups
-            .get(group_name)
-            .and_then(|group| group.index.as_ref())?;
-        self.pages.get(page_name)
+    pub fn group(&self, group_name: &GroupName) -> Option<GroupRef<'_>> {
+        self.groups.get(group_name).map(|group| GroupRef {
+            group,
+            content: self,
+        })
     }
 
-    pub fn page(&self, group_name: &GroupName, page_name: &PageName) -> Option<&Page> {
-        let page_name = self
+    pub fn tag(&self, tag_name: &TagName) -> Option<TagRef<'_>> {
+        self.tags.get(tag_name).map(|tag| TagRef { tag })
+    }
+
+    pub fn post(&self, group_name: &GroupName, post_name: &PostName) -> Option<PostRef<'_>> {
+        let post_name = self
             .groups
             .get(group_name)
-            .and_then(|group| group.members.get(page_name))?;
-        self.pages.get(page_name)
+            .and_then(|group| group.members.get(post_name))?;
+        self.posts.get(post_name).map(|post| PostRef {
+            post,
+            group_name: group_name.clone(),
+            name: post_name,
+            content: self,
+        })
     }
 }
 
@@ -459,28 +333,15 @@ pub struct Tag {
 }
 
 #[derive(Clone, Debug)]
-pub enum Page {
-    Post {
-        date: NaiveDate,
-        frontmatter: PostFrontmatter,
-        html_content: String,
-    },
-    Static {
-        html_content: String,
-    },
+pub struct Post {
+    pub date: NaiveDate,
+    pub frontmatter: PostFrontmatter,
+    pub html_content: String,
 }
 
-impl Render for Page {
-    fn render(&self) -> Markup {
-        match self {
-            Page::Post {
-                ref date,
-                ref html_content,
-                ..
-            } => RenderPost::new(html_content, date).render(),
-            Page::Static { ref html_content } => RenderStatic::new(html_content).render(),
-        }
-    }
+#[derive(Clone, Debug)]
+pub struct Page {
+    pub html_content: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
