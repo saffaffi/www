@@ -23,12 +23,11 @@ pub async fn index(
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
 
-    // if let Some(group) = content.group(&GroupName::Root) {
-    //     Ok(pages::group(group, theme).await)
-    // } else {
-    //     Err(not_found(request).await)
-    // }
-    todo!()
+    if let Some(page) = content.page("_index").await {
+        Ok(pages::page(page, theme).await)
+    } else {
+        Err(not_found(request).await)
+    }
 }
 
 pub async fn group(
@@ -46,9 +45,8 @@ pub async fn group(
     // {
     //     Ok(pages::group(page, theme).await)
     // } else {
-    //     Err(not_found(request).await)
+    Err(not_found(request).await)
     // }
-    todo!()
 }
 
 pub async fn tagged(
@@ -62,15 +60,14 @@ pub async fn tagged(
     // if let Some(page) = tag.try_into().ok().and_then(|tag| content.tag(&tag)) {
     //     Ok(pages::tagged(page, theme).await)
     // } else {
-    //     Err(not_found(request).await)
+    Err(not_found(request).await)
     // }
-    todo!()
 }
 
 pub async fn post(
     State(content): State<Content>,
     State(theme): State<Theme>,
-    Path((group, post)): Path<(String, String)>,
+    Path(post): Path<String>,
     request: Request<Body>,
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
@@ -84,9 +81,8 @@ pub async fn post(
     // {
     //     Ok(pages::post(post, theme).await)
     // } else {
-    //     Err(not_found(request).await)
+    Err(not_found(request).await)
     // }
-    todo!()
 }
 
 pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, HandlerError> {

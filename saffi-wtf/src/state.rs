@@ -21,16 +21,23 @@ use syntect::{
     Error as SyntectError, LoadingError as SyntectLoadingError,
 };
 use thiserror::Error;
-use tokio::{fs, runtime, sync::RwLock, task::JoinHandle};
+use tokio::{
+    fs, runtime,
+    sync::{RwLock, RwLockReadGuard},
+    task::JoinHandle,
+};
 use tracing::{debug, error, info, span, warn, Instrument, Level};
 
 use crate::{
-    state::names::{PageName, ParsePageNameError, TagName},
+    state::{
+        names::{GroupName, PageName, ParsePageNameError, TagName},
+        render::PageRef,
+    },
     Args,
 };
 
 pub mod names;
-// pub mod render;
+pub mod render;
 
 lazy_static! {
     static ref SYNTECT_ADAPTER: SyntectAdapter = SyntectAdapter::new(None);
@@ -226,14 +233,10 @@ pub struct State {
     _loader_handle: Arc<JoinHandle<()>>,
 }
 
-type PostName = PageName;
-
-type PostsMap = HashMap<PostName, Post>;
-
 #[derive(Clone, Debug)]
 pub struct Content {
     root: Arc<Utf8PathBuf>,
-    posts: Arc<RwLock<PostsMap>>,
+    nodes: Arc<RwLock<HashMap<Utf8PathBuf, Node>>>,
 }
 
 impl Content {
@@ -241,7 +244,7 @@ impl Content {
     pub fn empty_in(root: Utf8PathBuf) -> Self {
         Self {
             root: Arc::new(root),
-            posts: Arc::new(RwLock::new(PostsMap::default())),
+            nodes: Arc::new(RwLock::new(HashMap::default())),
         }
     }
 
@@ -251,29 +254,45 @@ impl Content {
     {
         let path = path.as_ref();
 
+        let mut nodes_guard = self.nodes.write().await;
+
+        // All the nodes will be keyed by their paths relative to the content root, without an
+        // extension.
+        //
+        // For now, keep the extension, so we'll be able to reconstruct the actual on-disk path by
+        // joining the two together later.
         let relative_path = path
             .strip_prefix(&*self.root)
-            .map_err(LoadContentError::NotRelative)?;
+            .map_err(LoadContentError::NotRelative)?
+            .to_owned();
 
         if metadata.is_file() {
-            let file_name = path.file_stem().ok_or(LoadContentError::NoFileName)?;
-            let file_ext = path.extension().ok_or(LoadContentError::NoExtension)?;
+            let file_name = relative_path
+                .file_stem()
+                .ok_or(LoadContentError::NoFileName)?;
+            let file_ext = relative_path
+                .extension()
+                .ok_or(LoadContentError::NoExtension)?;
 
             if file_ext == "md" {
-                if let Ok(date) =
-                    NaiveDate::parse_and_remainder(file_name, "%Y-%m-%d").map(|pair| pair.0)
-                {
+                if let Ok((date, _)) = NaiveDate::parse_and_remainder(file_name, "%Y-%m-%d") {
                     debug!(%relative_path, "loading post from file");
-                    if let Err(error) =
-                        <Self as LoadContent<Post, _>>::load_content(self, &path, date).await
-                    {
-                        warn!(%relative_path, %error, "failed to load post");
+                    match self.load_post(&relative_path, date).await {
+                        Ok(post) => {
+                            nodes_guard.insert(relative_path.with_extension(""), Node::Post(post));
+                            Ok(())
+                        }
+                        Err(error) => Err(error.into()),
                     }
-
-                    Ok(())
                 } else {
-                    info!(%relative_path, "loading page from file");
-                    Ok(())
+                    debug!(%relative_path, "loading page from file");
+                    match self.load_page(&relative_path).await {
+                        Ok(page) => {
+                            nodes_guard.insert(relative_path.with_extension(""), Node::Page(page));
+                            Ok(())
+                        }
+                        Err(error) => Err(error.into()),
+                    }
                 }
             } else {
                 info!(%relative_path, "skipping non-markdown file");
@@ -287,52 +306,17 @@ impl Content {
             Ok(())
         }
     }
-}
 
-impl FromRef<State> for Content {
-    fn from_ref(input: &State) -> Self {
-        input.content.clone()
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum LoadContentError {
-    #[error("path doesn't contain a file name")]
-    NoFileName,
-
-    #[error("path to file doesn't appear to be relative to the content path")]
-    NotRelative(#[source] StripPrefixError),
-
-    #[error("path doesn't contain a file extension")]
-    NoExtension,
-
-    #[error(transparent)]
-    LoadPost(#[from] LoadPostError),
-}
-
-trait LoadContent<C, E> {
-    type Extra;
-
-    async fn load_content<P>(&self, path: P, extra: Self::Extra) -> Result<bool, E>
-    where
-        P: AsRef<Utf8Path>;
-}
-
-impl LoadContent<Post, LoadPostError> for Content {
-    type Extra = NaiveDate;
-
-    async fn load_content<P>(&self, path: P, date: Self::Extra) -> Result<bool, LoadPostError>
-    where
-        P: AsRef<Utf8Path>,
-    {
+    async fn load_post(
+        &self,
+        relative_path: &Utf8Path,
+        date: NaiveDate,
+    ) -> Result<Post, LoadPostError> {
         use LoadPostError::*;
 
-        let mut posts_guard = self.posts.write().await;
-
-        let path = path.as_ref();
-
-        let name = PostName::try_from(path.file_stem().ok_or(NoFileStem)?).map_err(InvalidName)?;
-        let raw_content = fs::read_to_string(path).await.map_err(ReadContent)?;
+        let raw_content = fs::read_to_string(self.root.join(relative_path))
+            .await
+            .map_err(ReadContent)?;
 
         let (first_raw_fm, mut rest) = raw_content
             .strip_prefix("---")
@@ -365,7 +349,11 @@ impl LoadContent<Post, LoadPostError> for Content {
             match metadata {
                 Either::Left(single) => {
                     let (thread_meta, first_meta) = single.split_for_thread();
-                    metadata = Either::Right((thread_meta, vec![first_meta], vec![]));
+                    metadata = Either::Right((
+                        thread_meta,
+                        vec![first_meta, this_metadata],
+                        vec![last_content],
+                    ));
                 }
                 Either::Right((_, ref mut entries, ref mut content)) => {
                     entries.push(this_metadata);
@@ -383,41 +371,109 @@ impl LoadContent<Post, LoadPostError> for Content {
                     html_content,
                 };
 
-                info!(?name, "loaded single post");
-                posts_guard.insert(name, post);
+                info!(%relative_path, "loaded single post");
+                Ok(post)
             }
             Either::Right((thread_meta, entry_metas, mut entry_raw_content)) => {
                 entry_raw_content.push(rest);
 
+                let entries = entry_metas
+                    .into_iter()
+                    .zip(entry_raw_content.into_iter())
+                    .map(|(metadata, raw_content)| {
+                        let html_content = markdown_to_html(raw_content);
+                        ThreadEntry {
+                            metadata,
+                            html_content,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let entries_len = entries.len();
+
                 let post = Post::Thread {
                     metadata: thread_meta,
-                    entries: entry_metas
-                        .into_iter()
-                        .zip(entry_raw_content.into_iter())
-                        .map(|(metadata, raw_content)| {
-                            let html_content = markdown_to_html(raw_content);
-                            ThreadEntry {
-                                metadata,
-                                html_content,
-                            }
-                        })
-                        .collect::<Vec<_>>(),
+                    entries,
                 };
 
-                info!(?name, "loaded threaded post");
-                posts_guard.insert(name, post);
+                info!(entries = %entries_len, %relative_path, "loaded threaded post");
+                Ok(post)
             }
         }
-
-        // for tag in metadata.tags() {
-        //     tags.entry(tag)
-        //         .or_default()
-        //         .members
-        //         .insert(page_name.clone());
-        // }
-
-        Ok(true)
     }
+
+    async fn load_page(&self, relative_path: &Utf8Path) -> Result<Page, LoadPageError> {
+        use LoadPageError::*;
+
+        let raw_content = fs::read_to_string(self.root.join(relative_path))
+            .await
+            .map_err(ReadContent)?;
+
+        let (frontmatter, raw_content) = raw_content
+            .strip_prefix("---")
+            .ok_or(MissingFrontmatter)?
+            .split_once("---")
+            .ok_or(MalformedFrontmatter)?;
+
+        let metadata = toml::from_str::<PageMetadata>(frontmatter.trim())?;
+        let html_content = markdown_to_html(raw_content);
+
+        let page = Page {
+            metadata,
+            html_content,
+        };
+
+        info!(%relative_path, "loaded page");
+        Ok(page)
+    }
+
+    pub async fn page<P>(&self, path: P) -> Option<PageRef<'_>>
+    where
+        P: AsRef<Utf8Path>,
+    {
+        let nodes_guard = self.nodes.read().await;
+        let node_guard =
+            RwLockReadGuard::map(nodes_guard, |nodes| nodes.get(path.as_ref()).unwrap());
+
+        let page_guard = RwLockReadGuard::map(node_guard, |page_guard| {
+            if let Node::Page(page) = page_guard {
+                page
+            } else {
+                panic!()
+            }
+        });
+
+        Some(PageRef { guard: page_guard })
+    }
+}
+
+impl FromRef<State> for Content {
+    fn from_ref(input: &State) -> Self {
+        input.content.clone()
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum LoadContentError {
+    #[error("path doesn't contain a file name")]
+    NoFileName,
+
+    #[error("path to file doesn't appear to be relative to the content path")]
+    NotRelative(#[source] StripPrefixError),
+
+    #[error("path doesn't contain a file extension")]
+    NoExtension,
+
+    #[error(transparent)]
+    LoadPost(#[from] LoadPostError),
+
+    #[error(transparent)]
+    LoadPage(#[from] LoadPageError),
+}
+
+#[derive(Clone, Debug)]
+pub enum Node {
+    Post(Post),
+    Page(Page),
 }
 
 #[derive(Clone, Debug)]
@@ -440,12 +496,6 @@ pub struct ThreadEntry {
 
 #[derive(Error, Debug)]
 pub enum LoadPostError {
-    #[error("path doesn't contain a file stem")]
-    NoFileStem,
-
-    #[error(transparent)]
-    InvalidName(#[from] ParsePageNameError),
-
     #[error("failed to read content: {0}")]
     ReadContent(#[source] io::Error),
 
@@ -493,6 +543,33 @@ pub struct ThreadEntryMetadata {
     #[serde(default)]
     pub draft: bool,
     pub date: NaiveDate,
+}
+
+#[derive(Clone, Debug)]
+pub struct Page {
+    metadata: PageMetadata,
+    html_content: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PageMetadata {
+    pub title: String,
+}
+
+#[derive(Error, Debug)]
+pub enum LoadPageError {
+    #[error("failed to read content: {0}")]
+    ReadContent(#[source] io::Error),
+
+    #[error("page does not begin with frontmatter")]
+    MissingFrontmatter,
+
+    #[error("page frontmatter is malformed")]
+    MalformedFrontmatter,
+
+    #[error("failed to parse page frontmatter: {0}")]
+    ParseFrontmatter(#[from] toml::de::Error),
 }
 
 #[derive(Clone, Debug)]

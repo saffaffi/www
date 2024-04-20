@@ -1,6 +1,9 @@
 use maud::{html, Markup};
 
-use crate::{state::Theme, templates::wrappers};
+use crate::{
+    state::{render::PageRef, Theme},
+    templates::wrappers,
+};
 
 // pub async fn post(page: PostRef<'_>, theme: Theme) -> Markup {
 //     wrappers::base(
@@ -11,17 +14,17 @@ use crate::{state::Theme, templates::wrappers};
 //     )
 //     .await
 // }
-//
-// pub async fn group(group: GroupRef<'_>, theme: Theme) -> Markup {
-//     wrappers::base(
-//         theme,
-//         html! {
-//             (group)
-//         },
-//     )
-//     .await
-// }
-//
+
+pub async fn page(page: PageRef<'_>, theme: Theme) -> Markup {
+    wrappers::base(
+        theme,
+        html! {
+            (page)
+        },
+    )
+    .await
+}
+
 // pub async fn tagged(_tag: TagRef<'_>, theme: Theme) -> Markup {
 //     wrappers::base(
 //         theme,

@@ -58,10 +58,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(handlers::index))
-        .route("/:group", get(handlers::group))
-        .route("/:group/:post", get(handlers::post))
-        .route("/tagged/:tag", get(handlers::tagged))
-        .route("/style.css", get(handlers::stylesheet));
+        .route("/style.css", get(handlers::stylesheet))
+        .route("/:post", get(handlers::post));
 
     let app = app.nest_service(
         "/static",
