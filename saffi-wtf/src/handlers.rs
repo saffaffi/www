@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     body::Body,
     extract::{Path, State},
@@ -21,11 +23,12 @@ pub async fn index(
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
 
-    if let Some(group) = content.group(&GroupName::Root) {
-        Ok(pages::group(group, theme).await)
-    } else {
-        Err(not_found(request).await)
-    }
+    // if let Some(group) = content.group(&GroupName::Root) {
+    //     Ok(pages::group(group, theme).await)
+    // } else {
+    //     Err(not_found(request).await)
+    // }
+    todo!()
 }
 
 pub async fn group(
@@ -36,15 +39,16 @@ pub async fn group(
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
 
-    if let Some(page) = group
-        .try_into()
-        .ok()
-        .and_then(|group| content.group(&group))
-    {
-        Ok(pages::group(page, theme).await)
-    } else {
-        Err(not_found(request).await)
-    }
+    // if let Some(page) = group
+    //     .try_into()
+    //     .ok()
+    //     .and_then(|group| content.group(&group))
+    // {
+    //     Ok(pages::group(page, theme).await)
+    // } else {
+    //     Err(not_found(request).await)
+    // }
+    todo!()
 }
 
 pub async fn tagged(
@@ -53,13 +57,14 @@ pub async fn tagged(
     Path(tag): Path<String>,
     request: Request<Body>,
 ) -> Result<Markup, HandlerError> {
-    info!(route = %request.uri(), "handling request");
-
-    if let Some(page) = tag.try_into().ok().and_then(|tag| content.tag(&tag)) {
-        Ok(pages::tagged(page, theme).await)
-    } else {
-        Err(not_found(request).await)
-    }
+    // info!(route = %request.uri(), "handling request");
+    //
+    // if let Some(page) = tag.try_into().ok().and_then(|tag| content.tag(&tag)) {
+    //     Ok(pages::tagged(page, theme).await)
+    // } else {
+    //     Err(not_found(request).await)
+    // }
+    todo!()
 }
 
 pub async fn post(
@@ -70,17 +75,18 @@ pub async fn post(
 ) -> Result<Markup, HandlerError> {
     info!(route = %request.uri(), "handling request");
 
-    let group = group.try_into().ok();
-    let post = post.try_into().ok();
-
-    if let Some(post) = group
-        .zip(post)
-        .and_then(|(group, post)| content.post(&group, &post))
-    {
-        Ok(pages::post(post, theme).await)
-    } else {
-        Err(not_found(request).await)
-    }
+    // let group = group.try_into().ok();
+    // let post = post.try_into().ok();
+    //
+    // if let Some(post) = group
+    //     .zip(post)
+    //     .and_then(|(group, post)| content.post(&group, &post))
+    // {
+    //     Ok(pages::post(post, theme).await)
+    // } else {
+    //     Err(not_found(request).await)
+    // }
+    todo!()
 }
 
 pub async fn stylesheet(request: Request<Body>) -> Result<Response<String>, HandlerError> {

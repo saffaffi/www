@@ -5,7 +5,7 @@ target/
 *.pdb
 
 # Nix
-/result
-/result-bin
+result
+result-bin
 
 **/.env

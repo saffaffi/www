@@ -1,17 +1,19 @@
 use std::{
-    collections::{HashMap, HashSet},
-    io,
-    path::PathBuf,
-    sync::Arc,
+    collections::HashMap, fs::Metadata, io, path::StripPrefixError, sync::Arc, time::Duration,
 };
 
 use axum::extract::FromRef;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use chrono::naive::NaiveDate;
 use comrak::{
     markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
 };
+use either::Either;
+use ignore::Walk;
+use lazy_static::lazy_static;
 use maud::{html, Markup, PreEscaped};
+use notify::{RecommendedWatcher, RecursiveMode};
+use notify_debouncer_mini::{new_debouncer, DebounceEventResult, DebouncedEvent, Debouncer};
 use serde::Deserialize;
 use syntect::{
     highlighting::ThemeSet as SyntectThemeSet,
@@ -19,19 +21,30 @@ use syntect::{
     Error as SyntectError, LoadingError as SyntectLoadingError,
 };
 use thiserror::Error;
-use tokio::fs::{self, DirEntry};
-use tracing::info;
+use tokio::{fs, runtime, sync::RwLock, task::JoinHandle};
+use tracing::{debug, error, info, span, warn, Instrument, Level};
 
 use crate::{
-    state::{
-        names::{GroupName, PageName, ParseGroupNameError, ParsePageNameError, TagName},
-        render::{GroupRef, PostRef, TagRef},
-    },
+    state::names::{PageName, ParsePageNameError, TagName},
     Args,
 };
 
 pub mod names;
-pub mod render;
+// pub mod render;
+
+lazy_static! {
+    static ref SYNTECT_ADAPTER: SyntectAdapter = SyntectAdapter::new(None);
+    static ref COMRAK_PLUGINS: ComrakPlugins<'static> = {
+        let mut plugins = ComrakPlugins::default();
+        plugins.render.codefence_syntax_highlighter = Some(&*SYNTECT_ADAPTER);
+        plugins
+    };
+    static ref COMRAK_OPTIONS: ComrakOptions = ComrakOptions::default();
+}
+
+fn markdown_to_html(md_input: &str) -> String {
+    markdown_to_html_with_plugins(md_input, &COMRAK_OPTIONS, &COMRAK_PLUGINS)
+}
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -52,9 +65,15 @@ impl From<Args> for Config {
         } = args;
         Self {
             drafts,
-            content_path,
-            static_path,
-            themes_path,
+            content_path: content_path
+                .canonicalize_utf8()
+                .expect("should be able to canonicalize content path"),
+            static_path: static_path
+                .canonicalize_utf8()
+                .expect("should be able to canonicalize static path"),
+            themes_path: themes_path
+                .canonicalize_utf8()
+                .expect("should be able to canonicalize themes path"),
         }
     }
 }
@@ -66,160 +85,121 @@ impl Config {
         let theme_set = SyntectThemeSet::load_from_folder(self.themes_path)?;
         let theme = Theme::try_load(theme_set, "OneHalfLight", "OneHalfDark")?;
 
-        let syntect_adapter = SyntectAdapter::new(None);
-        let plugins = {
-            let mut plugins = ComrakPlugins::default();
-            plugins.render.codefence_syntax_highlighter = Some(&syntect_adapter);
-            plugins
-        };
-        let options = ComrakOptions::default();
+        let content = Content::empty_in(self.content_path.clone());
 
-        let markdown_to_html = |md: &str| markdown_to_html_with_plugins(md, &options, &plugins);
+        let walker = Walk::new(&self.content_path);
+        for result in walker {
+            match result {
+                Ok(entry) => {
+                    let Ok(path) = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()) else {
+                        warn!(
+                            path = ?entry.path(),
+                            "skipping entry with path that contains invalid UTF-8"
+                        );
+                        continue;
+                    };
 
-        let mut groups = GroupsMap::new();
-        let mut tags = TagsMap::new();
-        let mut pages = PagesMap::new();
-        let mut posts = PostsMap::new();
-        let mut groups_to_load = Vec::new();
+                    let Ok(metadata) = entry.metadata() else {
+                        warn!(%path, "skipping entry without valid metadata");
+                        continue;
+                    };
 
-        let load_page = |entry: DirEntry,
-                         group_context: GroupName,
-                         mut groups: GroupsMap,
-                         mut tags: TagsMap,
-                         mut pages: PagesMap,
-                         mut posts: PostsMap| async move {
-            let path = entry.path();
-            let file_name = path
-                .file_stem()
-                .ok_or_else(|| NoFileStem(entry.path()))?
-                .to_str()
-                .ok_or_else(|| PathInvalidUtf8(entry.path()))?
-                .to_owned();
-
-            let file_ext = path
-                .extension()
-                .ok_or_else(|| NoFileExt(entry.path()))?
-                .to_str()
-                .ok_or_else(|| PathInvalidUtf8(entry.path()))?;
-
-            if file_ext != "md" && file_ext != "markdown" {
-                panic!("found a file that's not markdown: {path:?}");
-            }
-
-            let page_name: PageName = if file_name == "_index" {
-                let name = PageName::new_index();
-                groups.entry(group_context).or_default().index = Some(name.clone());
-                name
-            } else {
-                let name: PageName = file_name.clone().try_into()?;
-                groups
-                    .entry(group_context)
-                    .or_default()
-                    .members
-                    .insert(name.clone());
-                name
-            };
-
-            let raw_content = fs::read_to_string(&path).await.map_err(ReadPageContent)?;
-
-            if let Ok((date, _)) = NaiveDate::parse_and_remainder(&file_name, "%Y-%m-%d") {
-                let (raw_frontmatter, raw_markdown) = raw_content
-                    .strip_prefix("---")
-                    .ok_or_else(|| MissingFrontmatter(entry.path()))?
-                    .trim()
-                    .split_once("---")
-                    .ok_or_else(|| MalformedFrontmatter(entry.path()))?;
-
-                let frontmatter = toml::from_str::<PostFrontmatter>(raw_frontmatter)?;
-
-                for tag in frontmatter.tags.iter().cloned() {
-                    tags.entry(tag)
-                        .or_default()
-                        .members
-                        .insert(page_name.clone());
+                    if let Err(error) = content.load(path, metadata).await {
+                        warn!(%error, "failed to load content");
+                    }
                 }
-
-                if frontmatter.draft && !self.drafts {
-                    info!(?path, "skipping draft");
-                } else {
-                    let html_content = markdown_to_html(raw_markdown);
-
-                    posts.insert(
-                        page_name,
-                        Post {
-                            date,
-                            frontmatter,
-                            html_content,
-                        },
-                    );
-
-                    info!(?path, "loaded post");
-                }
-            } else {
-                let raw_markdown = if let Some(stripped_once) = raw_content.strip_prefix("---") {
-                    // For now, we're ignoring any frontmatter. Later, when static pages need
-                    // frontmatter, we'll read this.
-                    let (_, raw_markdown) = stripped_once
-                        .trim()
-                        .split_once("---")
-                        .ok_or_else(|| MalformedFrontmatter(entry.path()))?;
-                    raw_markdown
-                } else {
-                    raw_content.as_str()
-                };
-
-                let html_content = markdown_to_html(raw_markdown);
-
-                pages.insert(page_name, Page { html_content });
-
-                info!(?path, "loaded static page");
-            };
-
-            Ok::<_, LoadStateError>((groups, tags, pages, posts))
-        };
-
-        let mut top_level_reader = fs::read_dir(&self.content_path).await.map_err(ReadDir)?;
-        while let Some(entry) = top_level_reader.next_entry().await.map_err(ReadDirEntry)? {
-            if entry.metadata().await.map_err(DirEntryMetadata)?.is_file() {
-                (groups, tags, pages, posts) =
-                    load_page(entry, GroupName::Root, groups, tags, pages, posts).await?;
-            } else {
-                let group_name = entry
-                    .file_name()
-                    .to_str()
-                    .ok_or_else(|| PathInvalidUtf8(entry.path()))?
-                    .to_string();
-                let group: GroupName = group_name.try_into()?;
-                groups.insert(group.clone(), <_>::default());
-                groups_to_load.push((entry.path(), group));
+                Err(error) => error!(%error, "directory walker encountered error"),
             }
         }
 
-        for (group_path, group) in groups_to_load {
-            let mut group_reader = fs::read_dir(group_path).await.map_err(ReadDir)?;
+        let (event_tx, event_rx) = std::sync::mpsc::channel::<DebouncedEvent>();
 
-            while let Some(entry) = group_reader.next_entry().await.map_err(ReadDirEntry)? {
-                if entry.metadata().await.map_err(DirEntryMetadata)?.is_file() {
-                    (groups, tags, pages, posts) =
-                        load_page(entry, group.clone(), groups, tags, pages, posts).await?;
-                } else {
-                    info!(path = ?entry.path(), "skipping nested group");
-                }
+        let runtime = runtime::Handle::current();
+        let content_1 = content.clone();
+
+        let loader_handle = runtime.spawn_blocking(move || {
+            let _guard = span!(Level::ERROR, "content_loader").entered();
+            let runtime = runtime::Handle::current();
+            while let Ok(event) = event_rx.recv() {
+                runtime.block_on(
+                    async {
+                        let Ok(path) = Utf8PathBuf::from_path_buf(event.path.clone()) else {
+                            warn!(
+                                path = ?event.path,
+                                "skipping event with path that contains invalid UTF-8"
+                            );
+                            return;
+                        };
+
+                        if path
+                            .file_name()
+                            .map_or(false, |name| name == "4913" || name.ends_with('~'))
+                        {
+                            // nvim creates these when you write files. I think the ~ one is
+                            // intentional, but the 4913 thing seems to be a longstanding bug:
+                            //
+                            // https://github.com/neovim/neovim/issues/3460
+                            debug!(
+                                %path,
+                                "skipping entry that appears to be an editor temporary file"
+                            );
+                            return;
+                        }
+
+                        if !fs::try_exists(&path).await.unwrap_or_default() {
+                            warn!(%path, "event probably represents a deleted file");
+                            // TODO: handle deletions
+                        } else {
+                            let Ok(metadata) = fs::metadata(&path).await else {
+                                warn!(
+                                    %path,
+                                    "skipping entry because metadata could not be accessed"
+                                );
+                                return;
+                            };
+
+                            if let Err(error) = content_1.load(path, metadata).await {
+                                warn!(%error, "failed to load content");
+                            }
+                        }
+                    }
+                    .instrument(span!(Level::ERROR, "handle_event")),
+                );
             }
-        }
 
-        let groups = Arc::new(groups);
-        let tags = Arc::new(tags);
-        let pages = Arc::new(pages);
-        let posts = Arc::new(posts);
-        let content = Content {
-            groups,
-            tags,
-            pages,
-            posts,
-        };
+            warn!("event sender hung up");
+        });
 
-        Ok(State { content, theme })
+        let mut watcher = new_debouncer(
+            Duration::from_millis(25),
+            move |res: DebounceEventResult| {
+                let _guard = span!(Level::ERROR, "file_watcher").entered();
+                match res {
+                    Ok(events) => {
+                        info!(events = %events.len(), "received batch of debounced events");
+                        for event in events {
+                            if let Err(error) = event_tx.send(event) {
+                                error!(%error, "failed to send event to content loader");
+                            }
+                        }
+                    }
+                    Err(error) => error!(%error, "watcher error received"),
+                }
+            },
+        )
+        .map_err(CreateWatcher)?;
+
+        watcher
+            .watcher()
+            .watch(self.content_path.as_std_path(), RecursiveMode::Recursive)
+            .map_err(WatchPath)?;
+
+        Ok(State {
+            content,
+            theme,
+            _watcher: Arc::new(watcher),
+            _loader_handle: Arc::new(loader_handle),
+        })
     }
 }
 
@@ -231,87 +211,81 @@ pub enum LoadStateError {
     #[error(transparent)]
     LoadThemeError(#[from] LoadThemeError),
 
-    #[error("failed to read contents of dir: {0}")]
-    ReadDir(#[source] io::Error),
+    #[error("failed to create notify watcher: {0}")]
+    CreateWatcher(#[source] notify::Error),
 
-    #[error("failed to read dir entry: {0}")]
-    ReadDirEntry(#[source] io::Error),
-
-    #[error("failed to access metadata of dir entry: {0}")]
-    DirEntryMetadata(#[source] io::Error),
-
-    #[error("file path does not contain a file stem: {0}")]
-    NoFileStem(PathBuf),
-
-    #[error("file path does not contain an extension: {0}")]
-    NoFileExt(PathBuf),
-
-    #[error("invalid UTF-8 in file path: {0}")]
-    PathInvalidUtf8(PathBuf),
-
-    #[error(transparent)]
-    ParseGroupError(#[from] ParseGroupNameError),
-
-    #[error(transparent)]
-    ParsePageNameError(#[from] ParsePageNameError),
-
-    #[error("failed to read page content: {0}")]
-    ReadPageContent(#[source] io::Error),
-
-    #[error("page at path {0} does not begin with frontmatter")]
-    MissingFrontmatter(PathBuf),
-
-    #[error("frontmatter of page at path {0} is malformed")]
-    MalformedFrontmatter(PathBuf),
-
-    #[error("failed to parse page frontmatter: {0}")]
-    ParseFrontmatter(#[from] toml::de::Error),
+    #[error("failed to watch new path: {0}")]
+    WatchPath(#[source] notify::Error),
 }
 
 #[derive(Clone, Debug)]
 pub struct State {
     pub content: Content,
     pub theme: Theme,
+    _watcher: Arc<Debouncer<RecommendedWatcher>>,
+    _loader_handle: Arc<JoinHandle<()>>,
 }
 
 type PostName = PageName;
 
-type GroupsMap = HashMap<GroupName, Group>;
-type TagsMap = HashMap<TagName, Tag>;
-type PagesMap = HashMap<PageName, Page>;
 type PostsMap = HashMap<PostName, Post>;
 
 #[derive(Clone, Debug)]
 pub struct Content {
-    groups: Arc<GroupsMap>,
-    tags: Arc<TagsMap>,
-    pages: Arc<PagesMap>,
-    posts: Arc<PostsMap>,
+    root: Arc<Utf8PathBuf>,
+    posts: Arc<RwLock<PostsMap>>,
 }
 
 impl Content {
-    pub fn group(&self, group_name: &GroupName) -> Option<GroupRef<'_>> {
-        self.groups.get(group_name).map(|group| GroupRef {
-            group,
-            content: self,
-        })
+    /// Create a new empty set of content, but with the root path set to `root`.
+    pub fn empty_in(root: Utf8PathBuf) -> Self {
+        Self {
+            root: Arc::new(root),
+            posts: Arc::new(RwLock::new(PostsMap::default())),
+        }
     }
 
-    pub fn tag(&self, tag_name: &TagName) -> Option<TagRef<'_>> {
-        self.tags.get(tag_name).map(|tag| TagRef { tag })
-    }
+    pub async fn load<P>(&self, path: P, metadata: Metadata) -> Result<(), LoadContentError>
+    where
+        P: AsRef<Utf8Path>,
+    {
+        let path = path.as_ref();
 
-    pub fn post(&self, group_name: &GroupName, post_name: &PostName) -> Option<PostRef<'_>> {
-        let post_name = self
-            .groups
-            .get(group_name)
-            .and_then(|group| group.members.get(post_name))?;
-        self.posts.get(post_name).map(|post| PostRef {
-            post,
-            group_name: group_name.clone(),
-            name: post_name,
-            content: self,
-        })
+        let relative_path = path
+            .strip_prefix(&*self.root)
+            .map_err(LoadContentError::NotRelative)?;
+
+        if metadata.is_file() {
+            let file_name = path.file_stem().ok_or(LoadContentError::NoFileName)?;
+            let file_ext = path.extension().ok_or(LoadContentError::NoExtension)?;
+
+            if file_ext == "md" {
+                if let Ok(date) =
+                    NaiveDate::parse_and_remainder(file_name, "%Y-%m-%d").map(|pair| pair.0)
+                {
+                    debug!(%relative_path, "loading post from file");
+                    if let Err(error) =
+                        <Self as LoadContent<Post, _>>::load_content(self, &path, date).await
+                    {
+                        warn!(%relative_path, %error, "failed to load post");
+                    }
+
+                    Ok(())
+                } else {
+                    info!(%relative_path, "loading page from file");
+                    Ok(())
+                }
+            } else {
+                info!(%relative_path, "skipping non-markdown file");
+                Ok(())
+            }
+        } else if metadata.is_dir() {
+            warn!(%relative_path, "skipping directory");
+            Ok(())
+        } else {
+            warn!(%relative_path, "skipping entry that is neither a file nor directory");
+            Ok(())
+        }
     }
 }
 
@@ -321,41 +295,209 @@ impl FromRef<State> for Content {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Group {
-    index: Option<PageName>,
-    members: HashSet<PageName>,
+#[derive(Debug, Error)]
+pub enum LoadContentError {
+    #[error("path doesn't contain a file name")]
+    NoFileName,
+
+    #[error("path to file doesn't appear to be relative to the content path")]
+    NotRelative(#[source] StripPrefixError),
+
+    #[error("path doesn't contain a file extension")]
+    NoExtension,
+
+    #[error(transparent)]
+    LoadPost(#[from] LoadPostError),
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Tag {
-    members: HashSet<PageName>,
+trait LoadContent<C, E> {
+    type Extra;
+
+    async fn load_content<P>(&self, path: P, extra: Self::Extra) -> Result<bool, E>
+    where
+        P: AsRef<Utf8Path>;
+}
+
+impl LoadContent<Post, LoadPostError> for Content {
+    type Extra = NaiveDate;
+
+    async fn load_content<P>(&self, path: P, date: Self::Extra) -> Result<bool, LoadPostError>
+    where
+        P: AsRef<Utf8Path>,
+    {
+        use LoadPostError::*;
+
+        let mut posts_guard = self.posts.write().await;
+
+        let path = path.as_ref();
+
+        let name = PostName::try_from(path.file_stem().ok_or(NoFileStem)?).map_err(InvalidName)?;
+        let raw_content = fs::read_to_string(path).await.map_err(ReadContent)?;
+
+        let (first_raw_fm, mut rest) = raw_content
+            .strip_prefix("---")
+            .ok_or(MissingFrontmatter)?
+            .split_once("---")
+            .ok_or(MalformedFrontmatter)?;
+
+        let first_frontmatter = toml::from_str::<PostFrontmatter>(first_raw_fm.trim())?;
+        let mut metadata: Either<
+            SinglePostMetadata,
+            (ThreadMetadata, Vec<ThreadEntryMetadata>, Vec<&str>),
+        > = Either::Left(SinglePostMetadata {
+            draft: first_frontmatter.draft,
+            tags: first_frontmatter.tags,
+            date,
+        });
+
+        while let Some((last_content, (this_raw_frontmatter, new_rest))) = rest
+            .split_once("---")
+            .and_then(|(last_content, fm_and_rest)| {
+                fm_and_rest
+                    .split_once("---")
+                    .map(|split_fm_rest| (last_content, split_fm_rest))
+            })
+        {
+            rest = new_rest;
+
+            let this_metadata = toml::from_str::<ThreadEntryMetadata>(this_raw_frontmatter.trim())?;
+
+            match metadata {
+                Either::Left(single) => {
+                    let (thread_meta, first_meta) = single.split_for_thread();
+                    metadata = Either::Right((thread_meta, vec![first_meta], vec![]));
+                }
+                Either::Right((_, ref mut entries, ref mut content)) => {
+                    entries.push(this_metadata);
+                    content.push(last_content);
+                }
+            }
+        }
+
+        match metadata {
+            Either::Left(metadata) => {
+                let html_content = markdown_to_html(rest);
+
+                let post = Post::Single {
+                    metadata,
+                    html_content,
+                };
+
+                info!(?name, "loaded single post");
+                posts_guard.insert(name, post);
+            }
+            Either::Right((thread_meta, entry_metas, mut entry_raw_content)) => {
+                entry_raw_content.push(rest);
+
+                let post = Post::Thread {
+                    metadata: thread_meta,
+                    entries: entry_metas
+                        .into_iter()
+                        .zip(entry_raw_content.into_iter())
+                        .map(|(metadata, raw_content)| {
+                            let html_content = markdown_to_html(raw_content);
+                            ThreadEntry {
+                                metadata,
+                                html_content,
+                            }
+                        })
+                        .collect::<Vec<_>>(),
+                };
+
+                info!(?name, "loaded threaded post");
+                posts_guard.insert(name, post);
+            }
+        }
+
+        // for tag in metadata.tags() {
+        //     tags.entry(tag)
+        //         .or_default()
+        //         .members
+        //         .insert(page_name.clone());
+        // }
+
+        Ok(true)
+    }
 }
 
 #[derive(Clone, Debug)]
-pub struct Post {
-    pub date: NaiveDate,
-    pub frontmatter: PostFrontmatter,
-    pub html_content: String,
+pub enum Post {
+    Single {
+        metadata: SinglePostMetadata,
+        html_content: String,
+    },
+    Thread {
+        metadata: ThreadMetadata,
+        entries: Vec<ThreadEntry>,
+    },
 }
 
 #[derive(Clone, Debug)]
-pub struct Page {
-    pub html_content: String,
+pub struct ThreadEntry {
+    metadata: ThreadEntryMetadata,
+    html_content: String,
+}
+
+#[derive(Error, Debug)]
+pub enum LoadPostError {
+    #[error("path doesn't contain a file stem")]
+    NoFileStem,
+
+    #[error(transparent)]
+    InvalidName(#[from] ParsePageNameError),
+
+    #[error("failed to read content: {0}")]
+    ReadContent(#[source] io::Error),
+
+    #[error("post does not begin with frontmatter")]
+    MissingFrontmatter,
+
+    #[error("post frontmatter is malformed")]
+    MalformedFrontmatter,
+
+    #[error("failed to parse post frontmatter: {0}")]
+    ParseFrontmatter(#[from] toml::de::Error),
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PostFrontmatter {
     #[serde(default)]
     draft: bool,
-
     #[serde(default)]
     tags: Vec<TagName>,
 }
 
 #[derive(Clone, Debug)]
+pub struct SinglePostMetadata {
+    pub draft: bool,
+    pub tags: Vec<TagName>,
+    pub date: NaiveDate,
+}
+
+impl SinglePostMetadata {
+    fn split_for_thread(self) -> (ThreadMetadata, ThreadEntryMetadata) {
+        let SinglePostMetadata { draft, tags, date } = self;
+        (ThreadMetadata { tags }, ThreadEntryMetadata { draft, date })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ThreadMetadata {
+    pub tags: Vec<TagName>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThreadEntryMetadata {
+    #[serde(default)]
+    pub draft: bool,
+    pub date: NaiveDate,
+}
+
+#[derive(Clone, Debug)]
 pub struct Theme {
-    theme_header: Markup,
+    theme_header: Arc<Markup>,
 }
 
 impl Theme {
@@ -387,10 +529,10 @@ impl Theme {
         let dark_block = format!("@media(prefers-color-scheme: dark) {{ :root{{ {dark_css} }} }}");
 
         Ok(Self {
-            theme_header: html! {
+            theme_header: Arc::new(html! {
                 (PreEscaped(light_block))
                 (PreEscaped(dark_block))
-            },
+            }),
         })
     }
 }

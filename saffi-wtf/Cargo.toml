@@ -10,9 +10,13 @@ axum-tracing-opentelemetry.workspace = true
 axum.workspace = true
 camino.workspace = true
 cfg-if.workspace = true
-chrono.workspace = true
 comrak.workspace = true
 dotenv.workspace = true
+either.workspace = true
+ignore.workspace = true
+lazy_static.workspace = true
+notify-debouncer-mini.workspace = true
+notify.workspace = true
 syntect.workspace = true
 tap.workspace = true
 thiserror.workspace = true
@@ -24,6 +28,10 @@ www-saffi.workspace = true
 [dependencies.clap]
 workspace = true
 features = ["env"]
+
+[dependencies.chrono]
+workspace = true
+features = ["serde"]
 
 [dependencies.maud]
 workspace = true

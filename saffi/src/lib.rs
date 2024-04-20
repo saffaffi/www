@@ -1,6 +1,6 @@
 use cfg_if::cfg_if;
 use tokio::signal;
-use tracing::info;
+use tracing::{info, instrument};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod result_option_exts;
@@ -22,6 +22,7 @@ pub fn init_tracing() {
         .init();
 }
 
+#[instrument(level = "error")]
 pub async fn graceful_shutdown() {
     // A future that will listen for the ctrl-c input from a terminal.
     let ctrl_c = async {
@@ -53,10 +54,10 @@ pub async fn graceful_shutdown() {
             // Print a newline to move past the rightward drift created by
             // terminals printing the ctrl-C escape sequence.
             println!();
-            info!("ctrl-c received, starting graceful shutdown")
+            info!("ctrl-c received")
         },
-        _ = terminate => info!("termination signal received, starting graceful shutdown"),
+        _ = terminate => info!("termination signal received"),
     }
 
-    info!("finished shutting down; see you soon!");
+    info!("shutting down, see you soon!");
 }

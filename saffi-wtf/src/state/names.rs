@@ -123,7 +123,7 @@ impl TryFrom<String> for PageName {
         use ParsePageNameError::*;
 
         // Look for any characters that are not lowercase ASCII-alphabetic or
-        // dashes. If any are found, this is an invalid group name, and the
+        // dashes. If any are found, this is an invalid page name, and the
         // invalid char will be returned in Some().
         raw.chars()
             .find(|&c| !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
